@@ -131,3 +131,10 @@ dmypy.json
 
 # Data Folder
 *.csv
+
+# idea IDE
+workspace.xml
+usage.statistics.xml
+/shelf
+*.iws
+/.idea
