@@ -116,3 +116,4 @@ usage.statistics.xml
 .Rproj.user
 .Rhistory
 *.Rhistory
+/.RData
