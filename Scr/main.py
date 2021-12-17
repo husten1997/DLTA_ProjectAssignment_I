@@ -93,7 +93,7 @@ X_test_ = X_scaler.transform(X_test)
 # Construct NN
 import tensorflow as tf
 import matplotlib.pyplot as plt
-get_ipython().run_line_magic('matplotlib')
+#get_ipython().run_line_magic('matplotlib')
 
 model = tf.keras.Sequential([
     tf.keras.layers.InputLayer(input_shape = (X_train_.shape[1])),
