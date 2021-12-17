@@ -4,7 +4,7 @@ import os
 import numpy as np
 import pandas as pd
 
-directory = "../Data/" #you need to change this to your data location
+directory = "Data/"
 file_path = os.path.join(directory, 'train.csv')
 dtypes={
     'timestamp': np.int64,
@@ -37,6 +37,7 @@ data_eval = data[data.timestamp >= 1622505660]
 data = data[data.timestamp < 1622505660]
 
 # feature generation
+
 import ta
 btc = data[data.Asset_ID == 1]
 btc.set_index('timestamp', inplace = True)
