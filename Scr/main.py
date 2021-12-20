@@ -1,10 +1,11 @@
-#%% Data Import
+#(1) Step: Descriptive Analysis of ETH & DOGE
 
+#Data Import
 import os
 import numpy as np
 import pandas as pd
 
-directory = "Data/"
+directory = "C:/Users/Albert Nietz/PyCharm_Projects/DLTA, First Project Assignment/DLTA_ProjectAssignment_I/Data"
 file_path = os.path.join(directory, 'train.csv')
 dtypes={
     'timestamp': np.int64,
@@ -30,14 +31,173 @@ data = pd.merge(data,
                 how = 'left')
 
 print(data.head())
+print(details.head())
 
+
+#Filter train dataset by DOGE and ETH & update asset_ids
+ethdoge = data[(data.Asset_ID == 4) | (data.Asset_ID == 6)]
+print(ethdoge.head())
+
+#Filter asset_details dataset by ETH and DOGE & update asset_ids
+detailsnew = details[(data.Asset_ID == 4) | (data.Asset_ID == 6)]
+print(details.head())
+
+#Change index values from 5 and 13 to 0 and 1
+detailsnew.index = [0, 1]
+print(detailsnew.head())
+
+#Create subplots: return over time
+import matplotlib.pyplot as plt
+
+cols = 1
+rows = len(detailsnew.Asset_ID)
+
+position = range(1,rows + 1)
+
+fig = plt.figure(1)
+fig.set_figheight(20)
+fig.set_figwidth(20)
+
+#Add every single subplot to the figure with a for loop
+for k in range(rows):
+
+    tmp_df = ethdoge[ethdoge.Asset_ID == detailsnew.Asset_ID[k]]
+    ax = fig.add_subplot(rows, cols, position[k])
+    ax.plot(tmp_df.Time, tmp_df.Target)
+    ax.set_title(detailsnew.Asset_Name[k])
+
+plt.show()
+del tmp_df
+
+#Combine subplots in one plot
+eth = ethdoge[ethdoge.Asset_ID == detailsnew.Asset_ID[0]]
+doge = ethdoge[ethdoge.Asset_ID == detailsnew.Asset_ID[1]]
+plt.figure(figsize=(12,4))
+plt.plot(eth.Time, eth.Target)
+plt.plot(doge.Time, doge.Target)
+plt.title('Returns over time of ' + detailsnew.Asset_Name[0] + ' (blue) and ' + detailsnew.Asset_Name[1] + ' (orange)')
+plt.show()
+del eth, doge
+
+#Create subplots: histogram / distribution
+import matplotlib.pyplot as plt
+
+cols = 1
+rows = len(detailsnew.Asset_ID)
+
+position = range(1,rows + 1)
+
+fig = plt.figure(1)
+fig.set_figheight(20)
+fig.set_figwidth(20)
+
+#Add every single subplot to the figure with a for loop
+for k in range(rows):
+
+    tmp_df = ethdoge[ethdoge.Asset_ID == detailsnew.Asset_ID[k]]
+    ax = fig.add_subplot(rows, cols, position[k])
+    ax.hist(tmp_df.Target, bins = 50)
+    ax.set_xlim(-0.1, 0.1)
+    ax.set_title(detailsnew.Asset_Name[k])
+
+plt.show()
+del tmp_df
+
+#Create new dataframes by adding BTC to old dataframes
+ethdogebtc = ethdoge.append(data[data.Asset_ID == 1])
+
+tmp_detailsnew = detailsnew.append(details[details.Asset_ID == 1])
+print(tmp_detailsnew.head())
+
+#Create new dataframe for correlation over time & heat map
+all_timestamps = np.sort(ethdogebtc['timestamp'].unique())
+targets = pd.DataFrame(index=all_timestamps)
+
+for i, id_ in enumerate(tmp_detailsnew.Asset_ID):
+    asset = ethdogebtc[ethdogebtc.Asset_ID == id_].set_index(keys='timestamp')
+    price = pd.Series(index=all_timestamps, data=asset['Close'])
+    targets[tmp_detailsnew.Asset_Name[i]] = (
+                                             price.shift(periods=-16) /
+                                             price.shift(periods=-1)
+                                     ) - 1
+
+print(targets.head())
+
+#Create subplots: 7-day-correlation over time
+cols = 1
+rows = len(tmp_detailsnew.Asset_ID)
+
+position = range(1,rows + 1)
+
+fig = plt.figure(1)
+fig.set_figheight(20)
+fig.set_figwidth(20)
+
+#Add every single subplot to the figure with a for loop
+cols = 1
+rows = len(tmp_detailsnew.Asset_ID)
+
+position = range(1,rows + 1)
+
+fig = plt.figure(1)
+fig.set_figheight(20)
+fig.set_figwidth(20)
+
+#TODO: Programming dynamically instead of statically
+corr_time = targets.groupby(targets.index//(10000*60)).corr().loc[:,tmp_detailsnew.Asset_Name[0]].loc[:,
+            tmp_detailsnew.Asset_Name[1]]
+ax = fig.add_subplot(rows, cols, position[0])
+ax.plot(corr_time)
+ax.set_title('7-Days-Corr. between ' + tmp_detailsnew.Asset_Name[0] + ' and ' + tmp_detailsnew.Asset_Name[1])
+plt.xticks([])
+plt.xlabel("Time")
+plt.ylabel("Correlation")
+
+corr_time = targets.groupby(targets.index//(10000*60)).corr().loc[:,tmp_detailsnew.Asset_Name[0]].loc[:,
+            tmp_detailsnew.Asset_Name[2]]
+ax = fig.add_subplot(rows, cols, position[1])
+ax.plot(corr_time)
+ax.set_title('7-Days-Corr. between ' + tmp_detailsnew.Asset_Name[0] + ' and ' + tmp_detailsnew.Asset_Name[2])
+plt.xticks([])
+plt.xlabel("Time")
+plt.ylabel("Correlation")
+
+corr_time = targets.groupby(targets.index//(10000*60)).corr().loc[:,tmp_detailsnew.Asset_Name[1]].loc[:,
+            tmp_detailsnew.Asset_Name[2]]
+ax = fig.add_subplot(rows, cols, position[2])
+ax.plot(corr_time)
+ax.set_title('7-Days-Corr. between ' + tmp_detailsnew.Asset_Name[1] + ' and ' + tmp_detailsnew.Asset_Name[2])
+plt.xticks([])
+plt.xlabel("Time")
+plt.ylabel("Correlation")
+
+plt.show()
+
+#Create heat map
+import seaborn as sns
+sns.heatmap(targets.corr())
+plt.show()
+
+""""
+#Create seven days correlation over time between ETH and DOGE
+corr_time = targets.groupby(targets.index//(10000*60)).corr().loc[:,"Ethereum"].loc[:,"Dogecoin"]
+corr_time.plot()
+plt.xticks([])
+plt.xlabel("Time")
+plt.ylabel("Correlation")
+plt.title("Correlation between ETH and DOGE over time");
+plt.show()
+
+
+
+print(targets.shape[0])
+print(corr_time.shape[0])
 #%% Data Preperation
-
 data_eval = data[data.timestamp >= 1622505660]
 data = data[data.timestamp < 1622505660]
 
-# feature generation
 
+# feature generation
 import ta
 btc = data[data.Asset_ID == 1]
 btc.set_index('timestamp', inplace = True)
@@ -64,9 +224,9 @@ test_data['CMF'] = CMF.chaikin_money_flow()
 AVR =ta.volatility.AverageTrueRange(close = train_data['Close'],high = train_data['High'], low = train_data['Low'], window = 5,fillna=False)
 train_data['AVR'] = AVR.average_true_range()
 
-AVR =ta.volatility.AverageTrueRange(close = test_data['Close'],high = test_data['High'], low = test_data['Low'], window = 5,fillna=False)
-test_data['AVR'] = AVR.average_true_range()
-
+AVR =ta.volatility.AverageTrueRange(close = test_data['Close'],high = test_data['Hi gh'], low = test_data['Low'], window = 5,fillna=False)
+test_data['AVR'] = AVR.average_true_range() 
+ 
 # drop NAs
 train_data.dropna(inplace = True)
 test_data.dropna(inplace = True)
@@ -90,7 +250,6 @@ X_test_ = X_scaler.transform(X_test)
 
 
 #%% Simple NN as performance reference
-
 # Construct NN
 import tensorflow as tf
 import matplotlib.pyplot as plt
@@ -144,3 +303,4 @@ y_eval = btc_eval['Target'].values
 plt.scatter(model.predict(X_eval_).flatten(), y_eval)
 plt.show()
 print(np.corrcoef(model.predict(X_eval_).flatten(), y_eval)[0, 1])
+"""
