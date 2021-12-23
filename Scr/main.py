@@ -1,4 +1,4 @@
-#(1) Step: Descriptive Analysis of ETH & DOGE
+#(1) Step: Descriptive Analysis
 
 #Data Import
 import os
@@ -70,6 +70,7 @@ plt.show()
 del tmp_df
 
 #Combine subplots in one plot
+#TODO: Programming dynamically instead of statically
 eth = ethdoge[ethdoge.Asset_ID == detailsnew.Asset_ID[0]]
 doge = ethdoge[ethdoge.Asset_ID == detailsnew.Asset_ID[1]]
 plt.figure(figsize=(12,4))
@@ -177,6 +178,72 @@ plt.show()
 import seaborn as sns
 sns.heatmap(targets.corr())
 plt.show()
+
+#(2) Step: Feature Engineering
+
+#Create subplots: closeprice development
+cols = 1
+rows = len(detailsnew.Asset_ID)
+
+position = range(1,rows + 1)
+
+fig = plt.figure(1)
+fig.set_figheight(20)
+fig.set_figwidth(20)
+
+#Add every single subplot to the figure with a for loop
+for k in range(rows):
+
+    tmp_df = ethdoge[ethdoge.Asset_ID == detailsnew.Asset_ID[k]]
+    ax = fig.add_subplot(rows, cols, position[k])
+    ax.plot(tmp_df.Time, tmp_df.Close)
+    ax.set_title(detailsnew.Asset_Name[k])
+
+plt.show()
+del tmp_df
+
+#Create subplots for each coin: split up closeprice development to determine a suitable training and test period
+from datetime import datetime
+from datetime import date
+from dateutil.relativedelta import relativedelta
+
+for k in range(len(detailsnew.Asset_ID)):
+
+    #Set and sort the index
+    coin_tmp = ethdoge[ethdoge.Asset_ID == detailsnew.Asset_ID[k]]
+    coin_tmp.set_index('timestamp', inplace = True)
+    coin_tmp = coin_tmp.reindex(range(coin_tmp.index[0], coin_tmp.index[-1] + 60, 60), method='pad')
+    coin_tmp.sort_index(inplace=True)
+
+    #Calculate number of month in the dataset
+    starting_date = coin_tmp.Time.iloc[0]
+    ending_date = date(2021, 9, 21)
+    numb_month = (ending_date.year - starting_date.year) * 12 + (ending_date.month - starting_date.month)
+
+    #Calculate six month timesplits
+    timesplits = [starting_date + i * relativedelta(months = 6) for i in range(numb_month // 6)] + [coin_tmp.Time.iloc[-1]]
+
+    Tot = len(timesplits) - 1
+    Cols = 2
+
+    Rows = Tot // Cols
+    Rows += Tot % Cols
+
+    Position = range(1, Tot + 1)
+
+    fig = plt.figure(1)
+    fig.set_figheight(30)
+    fig.set_figwidth(20)
+    fig.suptitle(detailsnew.Asset_Name[k])
+
+    #Add every single subplot to the figure with a for loop
+    for j in range(Tot):
+        coin_tmp2 = coin_tmp.loc[datetime.timestamp(timesplits[j]):datetime.timestamp(timesplits[j + 1])]
+        ax = fig.add_subplot(Rows, Cols, Position[j])
+        ax.plot(coin_tmp2.Time, coin_tmp2.Close)
+
+    plt.show()
+
 
 """"
 #Create seven days correlation over time between ETH and DOGE
