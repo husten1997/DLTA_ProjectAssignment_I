@@ -1,4 +1,4 @@
-#(1) Step: Descriptive Analysis
+#(1) Step: Perform descriptive analysis
 
 #Data Import
 import os
@@ -38,7 +38,7 @@ print(details.head())
 ethdoge = data[(data.Asset_ID == 4) | (data.Asset_ID == 6)]
 print(ethdoge.head())
 
-#Filter asset_details dataset by ETH and DOGE & update asset_ids
+#Filter asset_details dataset by ETH and DOGE & update asset_ids#Add every single subplot to the figure with a for loop
 detailsnew = details[(data.Asset_ID == 4) | (data.Asset_ID == 6)]
 print(details.head())
 
@@ -179,7 +179,7 @@ import seaborn as sns
 sns.heatmap(targets.corr())
 plt.show()
 
-#(2) Step: Feature Engineering
+#(2) Step: Conduct feature engineering
 
 #Create subplots: closeprice development
 cols = 1
@@ -244,6 +244,156 @@ for k in range(len(detailsnew.Asset_ID)):
 
     plt.show()
 
+#From now on: only one coin
+import ta
+
+#Take the last two plots as training period respectively test period
+start_train, end_train = datetime.timestamp(timesplits[len(timesplits)-3]), \
+                         datetime.timestamp(timesplits[len(timesplits)-2])
+start_test, end_test = datetime.timestamp(timesplits[len(timesplits)-2]), \
+                       datetime.timestamp(timesplits[len(timesplits)-1])
+
+train_data, test_data = coin_tmp.loc[start_train:end_train], coin_tmp.loc[start_test:end_test][3600:]
+
+upper_shadow = lambda asset: asset.High - np.maximum(asset.Close,asset.Open)
+lower_shadow = lambda asset: np.minimum(asset.Close,asset.Open)- asset.Low
+
+train_data['close_1'] = train_data.Close.diff()
+train_data['close_15'] = train_data.Close.diff(15)
+train_data['close_60'] = train_data.Close.diff(60)
+
+train_data['count_1'] = train_data.Count.diff()
+train_data['count_15'] = train_data.Count.diff(15)
+train_data['count_60'] = train_data.Count.diff(60)
+
+train_data['volume_1'] = train_data.Volume.diff()
+train_data['volume_15'] = train_data.Volume.diff(15)
+train_data['volume_60'] = train_data.Volume.diff(60)
+
+train_data['upper_shadow'] = upper_shadow(train_data)
+train_data['lower_shadow'] = lower_shadow(train_data)
+
+train_data = ta.add_all_ta_features(train_data,
+                                       open = 'Open',
+                                       high = 'High',
+                                       low = 'Low',
+                                       close = 'Close',
+                                       volume = 'Volume',
+                                       fillna = False)
+
+test_data['close_1'] = test_data.Close.diff()
+test_data['close_15'] = test_data.Close.diff(15)
+test_data['close_60'] = test_data.Close.diff(60)
+
+test_data['count_1'] = test_data.Count.diff()
+test_data['count_15'] = test_data.Count.diff(15)
+test_data['count_60'] = test_data.Count.diff(60)
+
+test_data['volume_1'] = test_data.Volume.diff()
+test_data['volume_15'] = test_data.Volume.diff(15)
+test_data['volume_60'] = test_data.Volume.diff(60)
+
+test_data['upper_shadow'] = upper_shadow(test_data)
+test_data['lower_shadow'] = lower_shadow(test_data)
+
+test_data = ta.add_all_ta_features(test_data,
+                                       open = 'Open',
+                                       high = 'High',
+                                       low = 'Low',
+                                       close = 'Close',
+                                       volume = 'Volume',
+                                       fillna = False)
+
+#Delete variables with more than 100 missing values except the target variable has more than 100 missing values too
+if train_data['Target'].isnull().sum() > 100:
+    train_data = train_data.drop(train_data.columns[train_data.isnull().sum() > 100].drop('Target'), axis = 1)
+    test_data = test_data.drop(test_data.columns[test_data.isnull().sum() > 100].drop('Target'), axis = 1)
+else:
+    train_data = train_data.drop(train_data.columns[train_data.isnull().sum() > 100], axis = 1)
+    test_data = test_data.drop(test_data.columns[test_data.isnull().sum() > 100], axis = 1)
+
+#Rank the feature variables according to the correlation with the target variable
+find_corr_features = train_data.drop(['Asset_ID', 'Time', 'Weight'], axis = 1).corr(method = 'spearman')['Target'].\
+    abs().sort_values(ascending = False)
+print(find_corr_features[0:21])
+
+#Create heat map: visualize correlations among feature variables and the target variable
+#Delete rows with missing values
+train_data.dropna(inplace = True)
+test_data.dropna(inplace = True)
+
+#Filter the 20 feature variables that correlate most with the target variable
+top_20_features = list(find_corr_features[:21].index)
+
+fig, axs = plt.subplots(1, 2, figsize = (20, 10))
+sns.heatmap(train_data[top_20_features].corr(method = 'spearman').abs(), ax = axs[0])
+sns.heatmap(test_data[top_20_features].corr(method = 'spearman').abs(), ax = axs[1])
+plt.show()
+
+#Open To Do's
+#TODO: Delete feature variables that correlate more than 0.9 with another feature varable (only vor training period)
+#(TODO: Show the correlation between the feature variables and the target variable in a scatterplot in addition to the heat map)
+#TODO: Stationary test for all the remaining feature variables + (graphics (development over the time) for training as well as the test period)
+
+#(3) Step: Train and test model with suitable neuronal network
+
+#Scale the data
+from sklearn.preprocessing import MinMaxScaler
+
+X_scaler = MinMaxScaler(feature_range = (0, 1))
+X_train = train_data[top_20_features].drop(['Target'], axis = 1)
+X_test = test_data[top_20_features].drop(['Target'], axis = 1)
+
+y_train = train_data['Target'].values
+y_test = test_data['Target'].values
+
+X_train_ = X_scaler.fit_transform(X_train)
+X_test_ = X_scaler.transform(X_test)
+
+#Generate neural network (TODO: Standard Recurrent Neural Network)
+import tensorflow as tf
+
+model = tf.keras.Sequential([
+    tf.keras.layers.InputLayer(input_shape = (X_train_.shape[1])),
+    tf.keras.layers.Dense(20, activation = 'selu'),
+    tf.keras.layers.Dropout(0.50),
+    tf.keras.layers.Dense(10, activation = 'selu'),
+    tf.keras.layers.Dropout(0.25),
+    tf.keras.layers.Dense(1)
+])
+
+#Show loss function for train period as well as test period
+model.compile(loss = 'mean_absolute_error', optimizer = 'adam')
+history = model.fit(X_train_, y_train, epochs = 5, validation_data = (X_test_, y_test))
+plt.plot(history.history['loss'], label = 'training')
+plt.plot(history.history['val_loss'], label = 'test')
+plt.show()
+
+#Show correlation between predictions and target realizations for training period respectively test period
+fig, axs = plt.subplots(1, 2, figsize = (12,8))
+
+axs[0].scatter(model.predict(X_train_).flatten(), y_train)
+axs[1].scatter(model.predict(X_test_).flatten(), y_test)
+plt.show()
+
+print(np.corrcoef(model.predict(X_train_).flatten(), y_train)[0, 1])
+print(np.corrcoef(model.predict(X_test_).flatten(), y_test)[0, 1])
+
+#Show the feature importance of each feature variable in relation to the used model
+X = tf.Variable(X_train_)
+y = tf.Variable(y_train)
+with tf.GradientTape() as tape:
+    tape.watch(X)
+    pred = model(X)
+grad = tf.abs(tape.gradient(pred,X))
+grad = tf.reduce_mean(grad,axis=0)
+feature_importance = grad.numpy() / grad.numpy().sum()
+
+
+plt.figure(figsize=(10,20))
+plt.barh(X_train.columns[np.argsort(feature_importance)], np.sort(feature_importance))
+plt.title('Feature importance')
+plt.show()
 
 """"
 #Create seven days correlation over time between ETH and DOGE
