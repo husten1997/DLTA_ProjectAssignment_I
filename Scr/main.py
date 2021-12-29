@@ -1,8 +1,10 @@
 import os
 import numpy as np
 import pandas as pd
-import sys
+import sys as sys
 import matplotlib.pyplot as plt
+import itertools as itt
+import seaborn as sb
 
 class AdvancedModel() :
 
@@ -52,15 +54,15 @@ class AdvancedModel() :
             df_tmp1 = df_tmp1.append(self.data[self.data.Asset_Name == self.coins[k]])
             df_tmp2 = df_tmp2.append(self.data_details[self.data_details.Asset_Name == self.coins[k]])
 
+        #This step is only necessary for createSubplotsSevenDayCorrelation() & createHeatMap() function
+        self.data_btc = self.data[self.data.Asset_Name == 'Bitcoin']
+        self.data_btc_details = self.data_details[self.data_details.Asset_Name == 'Bitcoin']
+        self.data_btc.sort_values('timestamp')
+
         self.data = df_tmp1.sort_values('timestamp')
         self.data_details = df_tmp2.sort_values('Asset_ID')
         self.data.reset_index(drop = True, inplace = True)
         self.data_details.reset_index(drop = True, inplace = True)
-
-    #Help function to create subplots
-    def createPositionIndex(self):
-
-        return range(1, len(self.data_details.Asset_ID) + 1)
 
     #Help function to create subplots
     def computeRows(self):
@@ -70,6 +72,11 @@ class AdvancedModel() :
         rows += tot % 2
 
         return rows
+
+    #Help function to create subplots
+    def createPositionIndex(self):
+
+        return range(1, len(self.data_details.Asset_ID) + 1)
 
     #Help function to create subplots
     def createFigure(self):
@@ -98,6 +105,20 @@ class AdvancedModel() :
         plt.show()
         del tmp_df
 
+    def createOnePlotReturnOverTime(self):
+
+        plt.figure(figsize=(12, 8))
+
+        coin_names = self.data_details.Asset_Name.tolist()
+        plt.title('Return over time of: ' + ', '.join(coin_names))
+
+        for k in range(len(self.data_details.Asset_ID)):
+            tmp_df = self.data[self.data.Asset_ID == self.data_details.Asset_ID[k]]
+            plt.plot(tmp_df.Time, tmp_df.Target)
+
+        plt.show()
+        del tmp_df
+
     def createSubplotsReturnDistribution(self):
 
         rows = self.computeRows()
@@ -116,7 +137,65 @@ class AdvancedModel() :
         plt.show()
         del tmp_df
 
+    #Help function to create correlation plots
+    def prepareDataFrameforCorrelationPlots(self):
+
+        tmp_df1 = self.data.append(self.data_btc)
+        tmp_df1 = tmp_df1.sort_values('timestamp')
+
+        tmp_df2 = self.data_details.append(self.data_btc_details)
+
+        all_timestamps = np.sort(tmp_df1['timestamp'].unique())
+        targets = pd.DataFrame(index=all_timestamps)
+
+        for i, id_ in enumerate(tmp_df2.Asset_ID):
+            asset = tmp_df1[tmp_df1.Asset_ID == id_].set_index(keys='timestamp')
+            price = pd.Series(index=all_timestamps, data=asset['Close'])
+            targets[tmp_df2.Asset_Name[i]] = (
+                                                     price.shift(periods=-16) /
+                                                     price.shift(periods=-1)
+                                             ) - 1
+
+        return targets
+
+    def createSubplotsSevenDayCorrelation(self, df):
+
+        tot = len(df.columns)
+        rows = tot // 2
+        rows += tot % 2
+
+        position = range(1, tot + 1)
+
+        fig = plt.figure(1)
+        fig.set_figheight(20)
+        fig.set_figwidth(20)
+
+        step = 0;
+
+        for k, j in itt.combinations(df.columns.tolist(), 2):
+
+            corr_time = df.groupby(df.index // (10000 * 60)).corr().loc[:, k].loc[:, j]
+
+            ax = fig.add_subplot(rows, 2, position[step])
+            step += 1
+
+            ax.plot(corr_time)
+            ax.set_title('7-Days-Corr. between ' + k + ' and ' + j)
+            plt.xticks([])
+            plt.xlabel("Time")
+            plt.ylabel("Correlation")
+
+        plt.show()
+
+    def createHeatMap(self, df):
+
+        sb.heatmap(df.corr())
+        plt.show()
+
 ## ---------------------------- MAIN ---------------------------- ##
+
+#(1) Configuration
+
 #Define coins that should be analysed / predicted
 coins = ['Ethereum', 'Dogecoin']
 
@@ -130,100 +209,24 @@ model1.filterDatasets()
 print(model1.data.head())
 print(model1.data_details.head())
 
-#(1) Descriptive Analysis
+#(2) Descriptive Analysis
+
 #Create subplots: target variable (proxy for return) over time
 model1.createSubplotsReturnOverTime()
+
+#Create one plot: target variable (proxy for return) over time of all analysed coins
+model1.createOnePlotReturnOverTime()
+
+#Create subplots: return distribution / histogram
 model1.createSubplotsReturnDistribution()
 
-''''' OLD CODE:
-#(1) Step: Perform descriptive analysis
-#Combine subplots in one plot
-#TODO: Programming dynamically instead of statically
-eth = ethdoge[ethdoge.Asset_ID == detailsnew.Asset_ID[0]]
-doge = ethdoge[ethdoge.Asset_ID == detailsnew.Asset_ID[1]]
-plt.figure(figsize=(12,4))
-plt.plot(eth.Time, eth.Target)
-plt.plot(doge.Time, doge.Target)
-plt.title('Returns over time of ' + detailsnew.Asset_Name[0] + ' (blue) and ' + detailsnew.Asset_Name[1] + ' (orange)')
-plt.show()
-del eth, doge
-
-
-#Create new dataframes by adding BTC to old dataframes
-ethdogebtc = ethdoge.append(data[data.Asset_ID == 1])
-
-tmp_detailsnew = detailsnew.append(details[details.Asset_ID == 1])
-print(tmp_detailsnew.head())
-
-#Create new dataframe for correlation over time & heat map
-all_timestamps = np.sort(ethdogebtc['timestamp'].unique())
-targets = pd.DataFrame(index=all_timestamps)
-
-for i, id_ in enumerate(tmp_detailsnew.Asset_ID):
-    asset = ethdogebtc[ethdogebtc.Asset_ID == id_].set_index(keys='timestamp')
-    price = pd.Series(index=all_timestamps, data=asset['Close'])
-    targets[tmp_detailsnew.Asset_Name[i]] = (
-                                             price.shift(periods=-16) /
-                                             price.shift(periods=-1)
-                                     ) - 1
-
-print(targets.head())
-
-#Create subplots: 7-day-correlation over time
-cols = 1
-rows = len(tmp_detailsnew.Asset_ID)
-
-position = range(1,rows + 1)
-
-fig = plt.figure(1)
-fig.set_figheight(20)
-fig.set_figwidth(20)
-
-#Add every single subplot to the figure with a for loop
-cols = 1
-rows = len(tmp_detailsnew.Asset_ID)
-
-position = range(1,rows + 1)
-
-fig = plt.figure(1)
-fig.set_figheight(20)
-fig.set_figwidth(20)
-
-#TODO: Programming dynamically instead of statically
-corr_time = targets.groupby(targets.index//(10000*60)).corr().loc[:,tmp_detailsnew.Asset_Name[0]].loc[:,
-            tmp_detailsnew.Asset_Name[1]]
-ax = fig.add_subplot(rows, cols, position[0])
-ax.plot(corr_time)
-ax.set_title('7-Days-Corr. between ' + tmp_detailsnew.Asset_Name[0] + ' and ' + tmp_detailsnew.Asset_Name[1])
-plt.xticks([])
-plt.xlabel("Time")
-plt.ylabel("Correlation")
-
-corr_time = targets.groupby(targets.index//(10000*60)).corr().loc[:,tmp_detailsnew.Asset_Name[0]].loc[:,
-            tmp_detailsnew.Asset_Name[2]]
-ax = fig.add_subplot(rows, cols, position[1])
-ax.plot(corr_time)
-ax.set_title('7-Days-Corr. between ' + tmp_detailsnew.Asset_Name[0] + ' and ' + tmp_detailsnew.Asset_Name[2])
-plt.xticks([])
-plt.xlabel("Time")
-plt.ylabel("Correlation")
-
-corr_time = targets.groupby(targets.index//(10000*60)).corr().loc[:,tmp_detailsnew.Asset_Name[1]].loc[:,
-            tmp_detailsnew.Asset_Name[2]]
-ax = fig.add_subplot(rows, cols, position[2])
-ax.plot(corr_time)
-ax.set_title('7-Days-Corr. between ' + tmp_detailsnew.Asset_Name[1] + ' and ' + tmp_detailsnew.Asset_Name[2])
-plt.xticks([])
-plt.xlabel("Time")
-plt.ylabel("Correlation")
-
-plt.show()
+#Create subplots: seven day correlation
+model1.createSubplotsSevenDayCorrelation(model1.prepareDataFrameforCorrelationPlots())
 
 #Create heat map
-import seaborn as sns
-sns.heatmap(targets.corr())
-plt.show()
+model1.createHeatMap(model1.prepareDataFrameforCorrelationPlots())
 
+'''''
 #(2) Step: Conduct feature engineering
 
 #Create subplots: closeprice development
