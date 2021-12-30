@@ -1,6 +1,34 @@
 import os
 import numpy as np
 import pandas as pd
+# TODO: Add import function
+
+def import_data(dir):
+    file_path = os.path.join(dir, 'train.csv')
+    dtypes = {
+        'timestamp': np.int64,
+        'Asset_ID': np.int8,
+        'Count': np.int32,
+        'Open': np.float64,
+        'High': np.float64,
+        'Low': np.float64,
+        'Close': np.float64,
+        'Volume': np.float64,
+        'VWAP': np.float64,
+        'Target': np.float64,
+    }
+    data = pd.read_csv(file_path, dtype=dtypes, usecols=list(dtypes.keys()))
+    data['Time'] = pd.to_datetime(data['timestamp'], unit='s')
+
+    file_path = os.path.join(directory, 'asset_details.csv')
+    details = pd.read_csv(file_path)
+
+    data = pd.merge(data,
+                    details,
+                    on="Asset_ID",
+                    how='left')
+
+    return data
 
 directory = "Data/"
 file_path = os.path.join(directory, 'train.csv')
@@ -31,6 +59,9 @@ print(data.head())
 
 #%% Data Preperation
 # doggicoin und etherium
+
+# TODO: Add Data selection function and seperation into test/trainings data
+
 data_eval = data[data.timestamp >= 1622505660]
 data = data[(data.timestamp < 1622505660) & (data.timestamp >= 1609459200)]
 #1.1.2021: 1609459200
@@ -74,6 +105,9 @@ train_data_features = None
 
 
 #%% Scaling
+
+# TODO: Add Scaling Function
+
 from sklearn.preprocessing import MinMaxScaler
 
 X_scaler = MinMaxScaler()
@@ -86,6 +120,9 @@ price_test_ = X_scaler.transform(price_test.reshape(-1, 1))
 
 
 #%% Generate Feature Matrix
+
+# TODO: Add function for feature matrix generation
+
 coin_id = 1
 #ar_order = 60 * 60 # Use last hour of data
 ar_order = 60 * 60
@@ -213,6 +250,32 @@ X_data_train_encoded = None
 
 #%% Generate Reduced feature set
 
+# TODO: Add function for selection of featureset reduction method and feature set reduction
+
+def generate_redFeatureSet(data, encoder = None, file = None, method = "average"):
+    if method == "autoencoder":
+        if encoder is None and file is None:
+            print("No Weights File path or autoencoder given!")
+        elif encoder is None and file is not None:
+            weights = np.matrix(pd.read_csv(file))
+        elif encoder is not None:
+            weights = np.matrix(encoder.get_weights()[0])
+    elif method == "average":
+        weights = np.zeros((3600, 60))
+
+        for j in range(60):
+            for i in range(60):
+                weights[(j * 60) + i, j] = 1 / 60
+
+    else:
+        print("Unknown method")
+
+    data = np.matmul(data.reshape((-1, 3600)), weights)
+    data = np.array(data)
+
+    return data
+
+
 weights = np.matrix(encoder.get_weights()[0])
 
 if ('encoder' not in globals()): weights = np.matrix(pd.read_csv("weights.csv"))
@@ -251,6 +314,7 @@ def build_ARRNN(hp):
     model.compile(loss = 'mean_squared_error', optimizer = 'adam')
     return model
 
+input_shape = X_data_train_red.shape[1]
 
 # define a recurrent network with Gated Recurrent Units
 model = tf.keras.Sequential([
@@ -292,7 +356,7 @@ Y_test_hat = model.predict(X_data_test_red)
 #%% Test
 from scipy.stats.stats import pearsonr
 
-var = lambda x: (1/(len(x)-1)) * (np.sum(x*x) - (1/len(x)) * (np.sum(x)**2))
+var = lambda x: (1/(len(x)-1)) * (np.sum(x * x) - (1/len(x)) * (np.sum(x)**2))
 cov = lambda x, y: (1/(len(x)-1)) * (np.sum(x * y) - (1/len(x)) * np.sum(x) * np.sum(y))
 corr = lambda x, y: (cov(x, y))/np.sqrt(var(x) * var(y))
 
@@ -310,6 +374,7 @@ axs.plot(Y_train_hat[:, 1], alpha = 0.5, label = 'prediction')
 axs.legend()
 
 plt.show()
+
 
 fig, axs = plt.subplots(1, 1, figsize = (12, 6))
 fig.autofmt_xdate()
