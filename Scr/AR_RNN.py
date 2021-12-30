@@ -309,9 +309,20 @@ def build_ARRNN(hp):
 
     model = tf.keras.Sequential()
     model.add(tf.keras.layers.InputLayer(input_shape = (input_shape, 1)))
-    model.add(tf.keras.layers.LSTM(hp.Choice('units', [60, 120, 240]), return_sequences = False))
+
+    if hp.Boolean("LSTM"):
+        model.add(tf.keras.layers.LSTM(hp.Choice('LSTMunits', [60, 120, 240]), return_sequences = False, activation=hp.Choice("activation", ["relu", "tanh"])))
+    else:
+        model.add(tf.keras.layers.GRU(hp.Choice('GRUunits', [60, 120, 240])))
+
+    if hp.Boolean("dropout"):
+        model.add(tf.keras.layers.Dropout(rate=0.25))
+
     model.add(tf.keras.layers.Dense(1))
-    model.compile(loss = 'mean_squared_error', optimizer = 'adam')
+
+    learning_rate = hp.Float("lr", min_value=1e-4, max_value=1e-2, sampling="log")
+
+    model.compile(loss = 'mean_squared_error', optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate))
     return model
 
 input_shape = X_data_train_red.shape[1]
@@ -322,7 +333,7 @@ model = tf.keras.Sequential([
     tf.keras.layers.InputLayer(input_shape = (input_shape, 1)),
     #tf.keras.layers.Dense(60, activation = 'linear', input_shape = [ar_order], use_bias = False),
     #tf.keras.layers.GRU(5),
-    tf.keras.layers.LSTM(128, return_sequences = False)
+    tf.keras.layers.LSTM(60, return_sequences = False)
     #tf.keras.layers.GRU(60)
     ,tf.keras.layers.Dense(1)
 ])
@@ -390,7 +401,7 @@ import keras_tuner as kt
 
 tuner = kt.RandomSearch(build_ARRNN, objective='val_loss', max_trials=5)
 
-tuner.search(X_data_train_red, Y_data_train, epochs=5, validation_data=(X_data_test_red, Y_data_test))
+tuner.search(X_data_train_red, Y_data_train, epochs=10, validation_data=(X_data_test_red, Y_data_test))
 best_model = tuner.get_best_models()[0]
 
 
