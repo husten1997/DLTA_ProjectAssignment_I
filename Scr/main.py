@@ -5,12 +5,21 @@ import sys as sys
 import matplotlib.pyplot as plt
 import itertools as itt
 import seaborn as sb
+from datetime import datetime
+from datetime import date
+from dateutil.relativedelta import relativedelta
+import ta
 
-class AdvancedModel() :
+class AdvancedModel():
 
     def __init__(self, coins):
 
         self.coins = coins
+        self.data = pd.DataFrame()
+        self.data_details = pd.DataFrame()
+        self.data_training = pd.DataFrame()
+        self.data_test = pd.DataFrame()
+        self.top_20_features = {}
 
         directory = "C:/Users/Albert Nietz/PyCharm_Projects/DLTA, First Project Assignment/DLTA_ProjectAssignment_I/Data"
         dtypes = {
@@ -54,15 +63,15 @@ class AdvancedModel() :
             df_tmp1 = df_tmp1.append(self.data[self.data.Asset_Name == self.coins[k]])
             df_tmp2 = df_tmp2.append(self.data_details[self.data_details.Asset_Name == self.coins[k]])
 
-        #This step is only necessary for createSubplotsSevenDayCorrelation() & createHeatMap() function
+        #This step is only necessary for createSubplotsSevenDayCorrelation() & createHeatMap_01() function
         self.data_btc = self.data[self.data.Asset_Name == 'Bitcoin']
         self.data_btc_details = self.data_details[self.data_details.Asset_Name == 'Bitcoin']
         self.data_btc.sort_values('timestamp')
 
         self.data = df_tmp1.sort_values('timestamp')
         self.data_details = df_tmp2.sort_values('Asset_ID')
-        self.data.reset_index(drop = True, inplace = True)
-        self.data_details.reset_index(drop = True, inplace = True)
+        self.data.reset_index(drop=True, inplace=True)
+        self.data_details.reset_index(drop=True, inplace=True)
 
     #Help function to create subplots
     def computeRows(self):
@@ -98,9 +107,9 @@ class AdvancedModel() :
             tmp_df = self.data[self.data.Asset_ID == self.data_details.Asset_ID[k]]
             ax = fig.add_subplot(rows, 2, position[k])
             ax.plot(tmp_df.Time, tmp_df.Target)
-            ax.set_xlabel('Time', fontsize = 15)
-            ax.set_ylabel('Target / Return', fontsize = 15)
-            ax.set_title(self.data_details.Asset_Name[k], fontsize = 20)
+            ax.set_xlabel('Time', fontsize=15)
+            ax.set_ylabel('Target / Return', fontsize=15)
+            ax.set_title(self.data_details.Asset_Name[k], fontsize=20)
 
         plt.show()
         del tmp_df
@@ -130,9 +139,9 @@ class AdvancedModel() :
             ax = fig.add_subplot(rows, 2, position[k])
             ax.hist(tmp_df.Target, bins=50)
             ax.set_xlim(-0.05, 0.05)
-            ax.set_xlabel('Target / Return', fontsize = 15)
-            ax.set_ylabel('Frequency', fontsize = 15)
-            ax.set_title(self.data_details.Asset_Name[k], fontsize = 20)
+            ax.set_xlabel('Target / Return', fontsize=15)
+            ax.set_ylabel('Frequency', fontsize=15)
+            ax.set_title(self.data_details.Asset_Name[k], fontsize=20)
 
         plt.show()
         del tmp_df
@@ -170,7 +179,7 @@ class AdvancedModel() :
         fig.set_figheight(20)
         fig.set_figwidth(20)
 
-        step = 0;
+        step = 0
 
         for k, j in itt.combinations(df.columns.tolist(), 2):
 
@@ -191,6 +200,203 @@ class AdvancedModel() :
 
         sb.heatmap(df.corr())
         plt.show()
+
+    def createSubplotsClosingPriceDevelopment(self):
+
+        rows = self.computeRows()
+        position = self.createPositionIndex()
+        fig = self.createFigure()
+
+        for k in range(len(self.data_details.Asset_ID)):
+
+            tmp_df = self.data[self.data.Asset_ID == self.data_details.Asset_ID[k]]
+            ax = fig.add_subplot(rows, 2, position[k])
+            ax.plot(tmp_df.Time, tmp_df.Close)
+            ax.set_xlabel('Time', fontsize=15)
+            ax.set_ylabel('Closing Price', fontsize=15)
+            ax.set_title(self.data_details.Asset_Name[k], fontsize=20)
+
+        plt.show()
+        del tmp_df
+
+    def createSubplotsClosingPriceDevelopmentSplitUp(self):
+
+        for k in range(len(self.data_details.Asset_ID)):
+
+            #Set and sort the index of the new df
+            tmp_df = self.data[self.data.Asset_ID == self.data_details.Asset_ID[k]]
+            tmp_df.set_index('timestamp', inplace=True)
+            tmp_df = tmp_df.reindex(range(tmp_df.index[0], tmp_df.index[-1] + 60, 60), method='pad')
+            tmp_df.sort_index(inplace=True)
+
+            #Calculate number of month in the new df
+            starting_date = tmp_df.Time.iloc[0]
+            ending_date = date(2021, 9, 21)
+            numb_month = (ending_date.year - starting_date.year) * 12 + (ending_date.month - starting_date.month)
+
+            #Calculate six month timesplits
+            timesplits = [starting_date + i * relativedelta(months=6) for i in range((numb_month // 6) + 1)] + \
+                         [tmp_df.Time.iloc[-1]]
+
+            #Take the last two six-month-plots as training period respectively test period
+            start_train, end_train = datetime.timestamp(timesplits[len(timesplits) - 4]), \
+                                     datetime.timestamp(timesplits[len(timesplits) - 3])
+            start_test, end_test = datetime.timestamp(timesplits[len(timesplits) - 3]), \
+                                   datetime.timestamp(timesplits[len(timesplits) - 2])
+
+            #The training and test dataset will generate for all analysed coins
+            self.data_training = self.data_training.append(tmp_df.loc[start_train:end_train])
+            self.data_test = self.data_test.append(tmp_df.loc[start_test:end_test][3600:])
+
+            tot = len(timesplits) - 1
+            cols = 2
+
+            rows = tot // cols
+            rows += tot % cols
+
+            position = range(1, tot + 1)
+
+            fig = self.createFigure()
+            fig.suptitle(self.data_details.Asset_Name[k], fontsize=20)
+
+            #Add every single subplot to the figure with a for loop
+            for j in range(tot):
+                tmp_df2 = tmp_df.loc[datetime.timestamp(timesplits[j]):datetime.timestamp(timesplits[j + 1])]
+                ax = fig.add_subplot(rows, cols, position[j])
+                ax.plot(tmp_df2.Time, tmp_df2.Close)
+                ax.set_xlabel('Time', fontsize=15)
+                ax.set_ylabel('Closing Price', fontsize=15)
+
+            plt.show()
+            del tmp_df2
+
+        del tmp_df
+
+        self.data_training.sort_index(inplace=True)
+        self.data_test.sort_index(inplace=True)
+
+    def caluclateTechnicalIndicators(self):
+
+        upper_shadow = lambda asset: asset.High - np.maximum(asset.Close, asset.Open)
+        lower_shadow = lambda asset: np.minimum(asset.Close, asset.Open) - asset.Low
+
+        for k in range(len(self.data_details)):
+
+            tmp_df_tr = self.data_training[self.data_training.Asset_ID == self.data_details.Asset_ID[k]]
+            tmp_df_te = self.data_test[self.data_test.Asset_ID == self.data_details.Asset_ID[k]]
+
+            tmp_df_tr['close_1'] = tmp_df_tr.Close.diff()
+            tmp_df_tr['close_15'] = tmp_df_tr.Close.diff(15)
+            tmp_df_tr['close_60'] = tmp_df_tr.Close.diff(60)
+
+            tmp_df_tr['count_1'] = tmp_df_tr.Count.diff()
+            tmp_df_tr['count_15'] = tmp_df_tr.Count.diff(15)
+            tmp_df_tr['count_60'] = tmp_df_tr.Count.diff(60)
+
+            tmp_df_tr['volume_1'] = tmp_df_tr.Volume.diff()
+            tmp_df_tr['volume_15'] = tmp_df_tr.Volume.diff(15)
+            tmp_df_tr['volume_60'] = tmp_df_tr.Volume.diff(60)
+
+            tmp_df_tr['upper_shadow'] = upper_shadow(tmp_df_tr)
+            tmp_df_tr['lower_shadow'] = lower_shadow(tmp_df_tr)
+
+            tmp_df_tr = ta.add_all_ta_features(tmp_df_tr,
+                                                open='Open',
+                                                high='High',
+                                                low='Low',
+                                                close='Close',
+                                                volume='Volume',
+                                                fillna=False)
+
+            tmp_df_te['close_1'] = tmp_df_te.Close.diff()
+            tmp_df_te['close_15'] = tmp_df_te.Close.diff(15)
+            tmp_df_te['close_60'] = tmp_df_te.Close.diff(60)
+
+            tmp_df_te['count_1'] = tmp_df_te.Count.diff()
+            tmp_df_te['count_15'] = tmp_df_te.Count.diff(15)
+            tmp_df_te['count_60'] = tmp_df_te.Count.diff(60)
+
+            tmp_df_te['volume_1'] = tmp_df_te.Volume.diff()
+            tmp_df_te['volume_15'] = tmp_df_te.Volume.diff(15)
+            tmp_df_te['volume_60'] = tmp_df_te.Volume.diff(60)
+
+            tmp_df_te['upper_shadow'] = upper_shadow(tmp_df_te)
+            tmp_df_te['lower_shadow'] = lower_shadow(tmp_df_te)
+
+            tmp_df_te = ta.add_all_ta_features(tmp_df_te,
+                                                open='Open',
+                                                high='High',
+                                                low='Low',
+                                                close='Close',
+                                                volume='Volume',
+                                                fillna=False)
+
+            #Delete variables with more than 100 missing values (except the target variable)
+            if tmp_df_tr['Target'].isnull().sum() > 100:
+                tmp_df_tr = tmp_df_tr.drop(tmp_df_tr.columns[tmp_df_tr.isnull().sum() > 100].drop('Target'), axis=1)
+                tmp_df_te = tmp_df_te.drop(tmp_df_te.columns[tmp_df_te.isnull().sum() > 100].drop('Target'), axis=1)
+            else:
+                tmp_df_tr = tmp_df_tr.drop(tmp_df_tr.columns[tmp_df_tr.isnull().sum() > 100], axis=1)
+                tmp_df_te = tmp_df_te.drop(tmp_df_te.columns[tmp_df_te.isnull().sum() > 100], axis=1)
+
+            #Update training and test dataframe with calculated technical indicators
+            self.data_training = self.data_training[self.data_training.Asset_ID != self.data_details.Asset_ID[k]]
+            self.data_training = self.data_training.append(tmp_df_tr)
+            self.data_test = self.data_test[self.data_test.Asset_ID != self.data_details.Asset_ID[k]]
+            self.data_test = self.data_test.append(tmp_df_te)
+
+        del tmp_df_tr
+        del tmp_df_te
+
+        self.data_training.sort_index(inplace=True)
+        self.data_test.sort_index(inplace=True)
+
+    def rankFeatureVariables(self):
+
+        for k in range(len(self.data_details)):
+
+            tmp_df_tr = self.data_training[self.data_training.Asset_ID == self.data_details.Asset_ID[k]]
+            tmp_df_te = self.data_test[self.data_test.Asset_ID == self.data_details.Asset_ID[k]]
+
+            find_corr_features = tmp_df_tr.drop(['Asset_ID', 'Time', 'Weight'], axis=1).corr(method='spearman')['Target'].\
+                abs().sort_values(ascending=False)
+
+            print('20 feature variables of [' +
+                  self.data_details.Asset_Name[k] +
+                  '], that correlate highest with the target variable: \n' +
+                  str(find_corr_features[1:21]))
+
+            #Delete rows with missing values
+            tmp_df_tr.dropna(inplace=True)
+            tmp_df_te.dropna(inplace=True)
+
+            #Insert into dictonary the top 20 features (=values) of each analysed coin (=key)
+            self.top_20_features[self.data_details.Asset_ID[k]] = list(find_corr_features[:21].index)
+
+        del tmp_df_tr
+        del tmp_df_te
+
+    def createSubplotsHeatMap(self):
+
+        for k in range(len(self.data_details)):
+
+            tmp_df_tr = self.data_training[self.data_training.Asset_ID == self.data_details.Asset_ID[k]]
+            tmp_df_te = self.data_test[self.data_test.Asset_ID == self.data_details.Asset_ID[k]]
+
+
+            fig, axs = plt.subplots(1, 2, figsize=(20, 10))
+            fig.suptitle(self.data_details.Asset_Name[k], fontsize=20)
+            axs[0].set_title('Training Data')
+            axs[1].set_title('Test Data')
+            sb.heatmap(tmp_df_tr[self.top_20_features[self.data_details.Asset_ID[k]]].corr(method='spearman').abs(),
+                       ax=axs[0])
+            sb.heatmap(tmp_df_te[self.top_20_features[self.data_details.Asset_ID[k]]].corr(method='spearman').abs(),
+                       ax=axs[1])
+            plt.show()
+
+        del tmp_df_tr
+        del tmp_df_te
+
 
 ## ---------------------------- MAIN ---------------------------- ##
 
@@ -226,161 +432,32 @@ model1.createSubplotsSevenDayCorrelation(model1.prepareDataFrameforCorrelationPl
 #Create heat map
 model1.createHeatMap(model1.prepareDataFrameforCorrelationPlots())
 
+#(2) Feature Engineering
+
+#Create subplots: closing price development
+model1.createSubplotsClosingPriceDevelopment()
+
+#Create subplots (for each coin): split up closing price development to determine a suitable training and test period;
+#In Addition to that: the training and test dataset will generate for all analysed coins
+model1.createSubplotsClosingPriceDevelopmentSplitUp()
+
+#Calucation of feature variables
+#a) Technical Indicators
+model1.caluclateTechnicalIndicators()
+#b) tbd
+
+#Rank feature variables according to the correlation with the target variable & print it
+model1.rankFeatureVariables()
+
+#Create subplots (for each coin): Correlation of the top 20 feature variables with the target variable
+#in the training period and in the test period
+model1.createSubplotsHeatMap()
+
 '''''
 #(2) Step: Conduct feature engineering
-
-#Create subplots: closeprice development
-cols = 1
-rows = len(detailsnew.Asset_ID)
-
-position = range(1,rows + 1)
-
-fig = plt.figure(1)
-fig.set_figheight(20)
-fig.set_figwidth(20)
-
-#Add every single subplot to the figure with a for loop
-for k in range(rows):
-
-    tmp_df = ethdoge[ethdoge.Asset_ID == detailsnew.Asset_ID[k]]
-    ax = fig.add_subplot(rows, cols, position[k])
-    ax.plot(tmp_df.Time, tmp_df.Close)
-    ax.set_title(detailsnew.Asset_Name[k])
-
-plt.show()
-del tmp_df
-
-#Create subplots for each coin: split up closeprice development to determine a suitable training and test period
-from datetime import datetime
-from datetime import date
-from dateutil.relativedelta import relativedelta
-
-for k in range(len(detailsnew.Asset_ID)):
-
-    #Set and sort the index
-    coin_tmp = ethdoge[ethdoge.Asset_ID == detailsnew.Asset_ID[k]]
-    coin_tmp.set_index('timestamp', inplace = True)
-    coin_tmp = coin_tmp.reindex(range(coin_tmp.index[0], coin_tmp.index[-1] + 60, 60), method='pad')
-    coin_tmp.sort_index(inplace=True)
-
-    #Calculate number of month in the dataset
-    starting_date = coin_tmp.Time.iloc[0]
-    ending_date = date(2021, 9, 21)
-    numb_month = (ending_date.year - starting_date.year) * 12 + (ending_date.month - starting_date.month)
-
-    #Calculate six month timesplits
-    timesplits = [starting_date + i * relativedelta(months = 6) for i in range(numb_month // 6)] + [coin_tmp.Time.iloc[-1]]
-
-    Tot = len(timesplits) - 1
-    Cols = 2
-
-    Rows = Tot // Cols
-    Rows += Tot % Cols
-
-    Position = range(1, Tot + 1)
-
-    fig = plt.figure(1)
-    fig.set_figheight(30)
-    fig.set_figwidth(20)
-    fig.suptitle(detailsnew.Asset_Name[k])
-
-    #Add every single subplot to the figure with a for loop
-    for j in range(Tot):
-        coin_tmp2 = coin_tmp.loc[datetime.timestamp(timesplits[j]):datetime.timestamp(timesplits[j + 1])]
-        ax = fig.add_subplot(Rows, Cols, Position[j])
-        ax.plot(coin_tmp2.Time, coin_tmp2.Close)
-
-    plt.show()
-
-#From now on: only one coin
-import ta
-
-#Take the last two plots as training period respectively test period
-start_train, end_train = datetime.timestamp(timesplits[len(timesplits)-3]), \
-                         datetime.timestamp(timesplits[len(timesplits)-2])
-start_test, end_test = datetime.timestamp(timesplits[len(timesplits)-2]), \
-                       datetime.timestamp(timesplits[len(timesplits)-1])
-
-train_data, test_data = coin_tmp.loc[start_train:end_train], coin_tmp.loc[start_test:end_test][3600:]
-
-upper_shadow = lambda asset: asset.High - np.maximum(asset.Close,asset.Open)
-lower_shadow = lambda asset: np.minimum(asset.Close,asset.Open)- asset.Low
-
-train_data['close_1'] = train_data.Close.diff()
-train_data['close_15'] = train_data.Close.diff(15)
-train_data['close_60'] = train_data.Close.diff(60)
-
-train_data['count_1'] = train_data.Count.diff()
-train_data['count_15'] = train_data.Count.diff(15)
-train_data['count_60'] = train_data.Count.diff(60)
-
-train_data['volume_1'] = train_data.Volume.diff()
-train_data['volume_15'] = train_data.Volume.diff(15)
-train_data['volume_60'] = train_data.Volume.diff(60)
-
-train_data['upper_shadow'] = upper_shadow(train_data)
-train_data['lower_shadow'] = lower_shadow(train_data)
-
-train_data = ta.add_all_ta_features(train_data,
-                                       open = 'Open',
-                                       high = 'High',
-                                       low = 'Low',
-                                       close = 'Close',
-                                       volume = 'Volume',
-                                       fillna = False)
-
-test_data['close_1'] = test_data.Close.diff()
-test_data['close_15'] = test_data.Close.diff(15)
-test_data['close_60'] = test_data.Close.diff(60)
-
-test_data['count_1'] = test_data.Count.diff()
-test_data['count_15'] = test_data.Count.diff(15)
-test_data['count_60'] = test_data.Count.diff(60)
-
-test_data['volume_1'] = test_data.Volume.diff()
-test_data['volume_15'] = test_data.Volume.diff(15)
-test_data['volume_60'] = test_data.Volume.diff(60)
-
-test_data['upper_shadow'] = upper_shadow(test_data)
-test_data['lower_shadow'] = lower_shadow(test_data)
-
-test_data = ta.add_all_ta_features(test_data,
-                                       open = 'Open',
-                                       high = 'High',
-                                       low = 'Low',
-                                       close = 'Close',
-                                       volume = 'Volume',
-                                       fillna = False)
-
-#Delete variables with more than 100 missing values except the target variable has more than 100 missing values too
-if train_data['Target'].isnull().sum() > 100:
-    train_data = train_data.drop(train_data.columns[train_data.isnull().sum() > 100].drop('Target'), axis = 1)
-    test_data = test_data.drop(test_data.columns[test_data.isnull().sum() > 100].drop('Target'), axis = 1)
-else:
-    train_data = train_data.drop(train_data.columns[train_data.isnull().sum() > 100], axis = 1)
-    test_data = test_data.drop(test_data.columns[test_data.isnull().sum() > 100], axis = 1)
-
-#Rank the feature variables according to the correlation with the target variable
-find_corr_features = train_data.drop(['Asset_ID', 'Time', 'Weight'], axis = 1).corr(method = 'spearman')['Target'].\
-    abs().sort_values(ascending = False)
-print(find_corr_features[0:21])
-
-#Create heat map: visualize correlations among feature variables and the target variable
-#Delete rows with missing values
-train_data.dropna(inplace = True)
-test_data.dropna(inplace = True)
-
-#Filter the 20 feature variables that correlate most with the target variable
-top_20_features = list(find_corr_features[:21].index)
-
-fig, axs = plt.subplots(1, 2, figsize = (20, 10))
-sns.heatmap(train_data[top_20_features].corr(method = 'spearman').abs(), ax = axs[0])
-sns.heatmap(test_data[top_20_features].corr(method = 'spearman').abs(), ax = axs[1])
-plt.show()
-
 #Open To Do's
-#TODO: Delete feature variables that correlate more than 0.9 with another feature varable (only vor training period)
-#(TODO: Show the correlation between the feature variables and the target variable in a scatterplot in addition to the heat map)
+#TODO: Delete feature variables that correlate more than 0.9 with another feature variable (only vor training period)
+#TODO: Show the correlation between the feature variables and the target variable in a scatterplot in addition to the heat map)
 #TODO: Stationary test for all the remaining feature variables + (graphics (development over the time) for training as well as the test period)
 
 #(3) Step: Train and test model with suitable neuronal network
@@ -436,7 +513,6 @@ with tf.GradientTape() as tape:
 grad = tf.abs(tape.gradient(pred,X))
 grad = tf.reduce_mean(grad,axis=0)
 feature_importance = grad.numpy() / grad.numpy().sum()
-
 
 plt.figure(figsize=(10,20))
 plt.barh(X_train.columns[np.argsort(feature_importance)], np.sort(feature_importance))
