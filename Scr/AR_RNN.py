@@ -58,9 +58,13 @@ data = pd.merge(data,
 print(data.head())
 
 #%% Data Preperation
-# doggicoin und etherium
+# doggicoin ID: 4
+# etherium ID: 6
+
+# TODO: Question: Etherium or Etherium Classic?
 
 # TODO: Add Data selection function and seperation into test/trainings data
+coin_ID = 4
 
 data_eval = data[data.timestamp >= 1622505660]
 data = data[(data.timestamp < 1622505660) & (data.timestamp >= 1609459200)]
@@ -69,12 +73,12 @@ data = data[(data.timestamp < 1622505660) & (data.timestamp >= 1609459200)]
 
 # feature generation
 
-btc = data[data.Asset_ID == 1]
+btc = data[data.Asset_ID == coin_ID]
 btc.set_index('timestamp', inplace = True)
 btc = btc.reindex(range(btc.index[0], btc.index[-1] + 60, 60), method = 'pad')
 btc.sort_index(inplace = True)
 
-btc_eval = data_eval[data_eval.Asset_ID == 1]
+btc_eval = data_eval[data_eval.Asset_ID == coin_ID]
 btc_eval.set_index('timestamp', inplace = True)
 btc_eval = btc_eval.reindex(range(btc_eval.index[0], btc_eval.index[-1] + 60, 60), method = 'pad')
 btc_eval.sort_index(inplace = True)
@@ -123,7 +127,6 @@ price_test_ = X_scaler.transform(price_test.reshape(-1, 1))
 
 # TODO: Add function for feature matrix generation
 
-coin_id = 1
 #ar_order = 60 * 60 # Use last hour of data
 ar_order = 60 * 60
 forecast_steps = 15 * 60 # Predict the next 15 min
@@ -341,15 +344,15 @@ model = tf.keras.Sequential([
 model.compile(loss = 'mean_squared_error', optimizer = 'adam')
 model.summary()
 
-#%% Fit RNN
+#%% Reshape Data
 
 X_data_train_red = np.reshape(X_data_train_red, X_data_train_red.shape + (1,))
 X_data_test_red = np.reshape(X_data_test_red, X_data_test_red.shape + (1,))
 Y_data_train = np.reshape(Y_data_train, Y_data_train.shape + (1,))
 Y_data_test = np.reshape(Y_data_test, Y_data_test.shape + (1,))
 
-
-ARRNN_history = model.fit(X_data_train_red, Y_data_train, epochs = 20, validation_data = (X_data_test_red, Y_data_test))
+#%% Fit RNN
+ARRNN_history = model.fit(X_data_train_red, Y_data_train, epochs = 20, validation_data = (X_data_test_red, Y_data_test), batch_size=1024)
 
 #%% History Plot
 import matplotlib.pylab as plt
@@ -372,8 +375,8 @@ cov = lambda x, y: (1/(len(x)-1)) * (np.sum(x * y) - (1/len(x)) * np.sum(x) * np
 corr = lambda x, y: (cov(x, y))/np.sqrt(var(x) * var(y))
 
 #%%
-print(corr(Y_train_hat.reshape((-1)), Y_data_train.reshape((-1))))
-print(corr(Y_test_hat.reshape((-1)), Y_data_test.reshape((-1))))
+print("In-sample corr: " + str(corr(Y_train_hat.reshape((-1)), Y_data_train.reshape((-1)))))
+print("Out-of-sample corr: " + str(corr(Y_test_hat.reshape((-1)), Y_data_test.reshape((-1)))))
 
 
 #%% Plot
@@ -401,7 +404,8 @@ import keras_tuner as kt
 
 tuner = kt.RandomSearch(build_ARRNN, objective='val_loss', max_trials=5)
 
-tuner.search(X_data_train_red, Y_data_train, epochs=10, validation_data=(X_data_test_red, Y_data_test))
+tuner.search(X_data_train_red, Y_data_train, epochs=10, validation_data=(X_data_test_red, Y_data_test), batch_size = 512)
+#%%
 best_model = tuner.get_best_models()[0]
 
 
