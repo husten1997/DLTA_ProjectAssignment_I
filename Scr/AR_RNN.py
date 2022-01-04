@@ -20,7 +20,7 @@ def import_data(dir):
     data = pd.read_csv(file_path, dtype=dtypes, usecols=list(dtypes.keys()))
     data['Time'] = pd.to_datetime(data['timestamp'], unit='s')
 
-    file_path = os.path.join(directory, 'asset_details.csv')
+    file_path = os.path.join(dir, 'asset_details.csv')
     details = pd.read_csv(file_path)
 
     data = pd.merge(data,
@@ -328,7 +328,8 @@ def build_ARRNN(hp):
     model.compile(loss = 'mean_squared_error', optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate))
     return model
 
-input_shape = X_data_train_red.shape[1]
+#input_shape = X_data_train_red.shape[1]
+input_shape = X_data_train.shape[1]
 
 # define a recurrent network with Gated Recurrent Units
 model = tf.keras.Sequential([
@@ -336,7 +337,7 @@ model = tf.keras.Sequential([
     tf.keras.layers.InputLayer(input_shape = (input_shape, 1)),
     #tf.keras.layers.Dense(60, activation = 'linear', input_shape = [ar_order], use_bias = False),
     #tf.keras.layers.GRU(5),
-    tf.keras.layers.LSTM(60, return_sequences = False)
+    tf.keras.layers.LSTM(120, return_sequences = False)
     #tf.keras.layers.GRU(60)
     ,tf.keras.layers.Dense(1)
 ])
@@ -348,10 +349,14 @@ model.summary()
 
 X_data_train_red = np.reshape(X_data_train_red, X_data_train_red.shape + (1,))
 X_data_test_red = np.reshape(X_data_test_red, X_data_test_red.shape + (1,))
+# X_data_train_red = np.reshape(X_data_train, X_data_train.shape + (1,))
+# X_data_test_red = np.reshape(X_data_test, X_data_test.shape + (1,))
+
 Y_data_train = np.reshape(Y_data_train, Y_data_train.shape + (1,))
 Y_data_test = np.reshape(Y_data_test, Y_data_test.shape + (1,))
 
 #%% Fit RNN
+os.environ["TF_GPU_ALLOCATOR"]="cuda_malloc_async"
 ARRNN_history = model.fit(X_data_train_red, Y_data_train, epochs = 20, validation_data = (X_data_test_red, Y_data_test), batch_size=1024)
 
 #%% History Plot
@@ -404,7 +409,7 @@ import keras_tuner as kt
 
 tuner = kt.RandomSearch(build_ARRNN, objective='val_loss', max_trials=5)
 
-tuner.search(X_data_train_red, Y_data_train, epochs=10, validation_data=(X_data_test_red, Y_data_test), batch_size = 512)
+tuner.search(X_data_train_red, Y_data_train, epochs=10, validation_data=(X_data_test_red, Y_data_test), batch_size = 1024)
 #%%
 best_model = tuner.get_best_models()[0]
 
