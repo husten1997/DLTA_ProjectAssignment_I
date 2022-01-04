@@ -223,7 +223,7 @@ class AR_RNN_model:
         return model
 
 
-    def setARRNN_model(self, method = "Config", config = None, dimRedMethod = 'Average', epochs = 20, ):
+    def setARRNN_model(self, method = "Config", config = None, dimRedMethod = 'Average', epochs = 20):
         X_redFeaturesTrain, X_redFeaturesTest, Y_featuresTrain, Y_featuresTest = self.generateFitFeaturesSet(
             dimRedMethod = dimRedMethod)
 
@@ -245,14 +245,14 @@ class AR_RNN_model:
 
         elif method == "Config":
             config = {'LSTM': True,
-                      'LSTMunits': 120,
+                      'LSTMunits': 60,
                       'LSTMactivation': 'relu',
                       'GRUunits': 60,
                       'dropout': False,
-                      'lr': 0.00068464}
+                      'lr': 1e-2 } # 0.00068464
 
             self.ARRNN_model = self.buildARRNN(config)
-            history = self.ARRNN_model.fit(X_redFeaturesTrain, Y_featuresTrain, epochs = 20, validation_data = (X_redFeaturesTest, Y_featuresTest), batch_size=1024)
+            history = self.ARRNN_model.fit(X_redFeaturesTrain, Y_featuresTrain, epochs = 20, validation_data = (X_redFeaturesTest, Y_featuresTest), batch_size=512)
             #TODO: History plot
 
             import matplotlib.pyplot as plt
