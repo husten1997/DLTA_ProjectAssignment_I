@@ -9,6 +9,8 @@ from datetime import datetime
 from datetime import date
 from dateutil.relativedelta import relativedelta
 import ta
+from sklearn.preprocessing import MinMaxScaler
+import tensorflow as tf
 
 class AdvancedModel():
 
@@ -49,7 +51,7 @@ class AdvancedModel():
 
     def filterDatasets(self):
 
-        all_coins = self.data.Asset_Name.tolist()
+        all_coins = self.data_details.Asset_Name.tolist()
 
         df_tmp1 = pd.DataFrame()
         df_tmp2 = pd.DataFrame()
@@ -57,13 +59,13 @@ class AdvancedModel():
         for k in range(len(self.coins)):
 
             if self.coins[k] not in all_coins:
-                print(self.coins[k] + ' ist nicht zulässig bzw. existiert nicht!')
+                print('[' + self.coins[k] + '] is not allowed or does not exit!')
                 sys.exit(400)
 
             df_tmp1 = df_tmp1.append(self.data[self.data.Asset_Name == self.coins[k]])
             df_tmp2 = df_tmp2.append(self.data_details[self.data_details.Asset_Name == self.coins[k]])
 
-        #This step is only necessary for createSubplotsSevenDayCorrelation() & createHeatMap_01() function
+        #This step is only necessary for createSubplotsSevenDayCorrelation() & createHeatMap() function
         self.data_btc = self.data[self.data.Asset_Name == 'Bitcoin']
         self.data_btc_details = self.data_details[self.data_details.Asset_Name == 'Bitcoin']
         self.data_btc.sort_values('timestamp')
@@ -150,9 +152,10 @@ class AdvancedModel():
     def prepareDataFrameforCorrelationPlots(self):
 
         tmp_df1 = self.data.append(self.data_btc)
-        tmp_df1 = tmp_df1.sort_values('timestamp')
+        tmp_df1.sort_values('timestamp', inplace=True)
 
         tmp_df2 = self.data_details.append(self.data_btc_details)
+        tmp_df2.reset_index(drop=True, inplace=True)
 
         all_timestamps = np.sort(tmp_df1['timestamp'].unique())
         targets = pd.DataFrame(index=all_timestamps)
@@ -280,7 +283,7 @@ class AdvancedModel():
         upper_shadow = lambda asset: asset.High - np.maximum(asset.Close, asset.Open)
         lower_shadow = lambda asset: np.minimum(asset.Close, asset.Open) - asset.Low
 
-        for k in range(len(self.data_details)):
+        for k in range(len(self.data_details.Asset_ID)):
 
             tmp_df_tr = self.data_training[self.data_training.Asset_ID == self.data_details.Asset_ID[k]]
             tmp_df_te = self.data_test[self.data_test.Asset_ID == self.data_details.Asset_ID[k]]
@@ -353,7 +356,7 @@ class AdvancedModel():
 
     def rankFeatureVariables(self):
 
-        for k in range(len(self.data_details)):
+        for k in range(len(self.data_details.Asset_ID)):
 
             tmp_df_tr = self.data_training[self.data_training.Asset_ID == self.data_details.Asset_ID[k]]
             tmp_df_te = self.data_test[self.data_test.Asset_ID == self.data_details.Asset_ID[k]]
@@ -366,10 +369,6 @@ class AdvancedModel():
                   '], that correlate highest with the target variable: \n' +
                   str(find_corr_features[1:21]))
 
-            #Delete rows with missing values
-            tmp_df_tr.dropna(inplace=True)
-            tmp_df_te.dropna(inplace=True)
-
             #Insert into dictonary the top 20 features (=values) of each analysed coin (=key)
             self.top_20_features[self.data_details.Asset_ID[k]] = list(find_corr_features[:21].index)
 
@@ -378,11 +377,14 @@ class AdvancedModel():
 
     def createSubplotsHeatMap(self):
 
-        for k in range(len(self.data_details)):
+        for k in range(len(self.data_details.Asset_ID)):
 
             tmp_df_tr = self.data_training[self.data_training.Asset_ID == self.data_details.Asset_ID[k]]
             tmp_df_te = self.data_test[self.data_test.Asset_ID == self.data_details.Asset_ID[k]]
 
+            #Delete rows with missing values
+            tmp_df_tr.dropna(inplace=True)
+            tmp_df_te.dropna(inplace=True)
 
             fig, axs = plt.subplots(1, 2, figsize=(20, 10))
             fig.suptitle(self.data_details.Asset_Name[k], fontsize=20)
@@ -397,13 +399,104 @@ class AdvancedModel():
         del tmp_df_tr
         del tmp_df_te
 
+    def applyNeuralNetwork(self):
+
+        for k in range(len(self.data_details.Asset_ID)):
+
+            #Scale the data
+            tmp_df_tr = self.data_training[self.data_training.Asset_ID == self.data_details.Asset_ID[k]]
+            tmp_df_te = self.data_test[self.data_test.Asset_ID == self.data_details.Asset_ID[k]]
+
+            #Delete rows with missing values
+            tmp_df_tr.dropna(inplace=True)
+            tmp_df_te.dropna(inplace=True)
+
+            x_scaler = MinMaxScaler(feature_range=(0, 1))
+            x_train = tmp_df_tr[self.top_20_features[self.data_details.Asset_ID[k]]].drop(['Target'], axis=1)
+            x_test = tmp_df_te[self.top_20_features[self.data_details.Asset_ID[k]]].drop(['Target'], axis=1)
+
+            y_train = tmp_df_tr['Target'].values
+            y_test = tmp_df_te['Target'].values
+
+            x_train_ = x_scaler.fit_transform(x_train)
+            x_test_ = x_scaler.transform(x_test)
+
+            #Generate different neural networks depending on the considered coin
+            if self.data_details.Asset_Name[k] == 'Dogecoin':
+
+                model = tf.keras.Sequential([
+                    tf.keras.layers.InputLayer(input_shape=(x_train_.shape[1])),
+                    tf.keras.layers.Dense(20, activation='selu'),
+                    tf.keras.layers.Dropout(0.50),
+                    tf.keras.layers.Dense(10, activation='selu'),
+                    tf.keras.layers.Dropout(0.25),
+                    tf.keras.layers.Dense(1)
+            ])
+
+            elif self.data_details.Asset_Name[k] == 'Ethereum':
+
+                model = tf.keras.Sequential([
+                    tf.keras.layers.InputLayer(input_shape=(x_train_.shape[1])),
+                    tf.keras.layers.Dense(20, activation='selu'),
+                    tf.keras.layers.Dropout(0.50),
+                    tf.keras.layers.Dense(10, activation='selu'),
+                    tf.keras.layers.Dropout(0.25),
+                    tf.keras.layers.Dense(1)
+                ])
+
+            else:
+
+                print('Unfortunately, no neural network is available for [' + self.data_details[k].Asset_Name + '].')
+                sys.exit(400)
+
+            #Show loss function for train period as well as test period
+            model.compile(loss='mean_absolute_error', optimizer='adam')
+            history = model.fit(x_train_, y_train, epochs=5, validation_data=(x_test_, y_test))
+            plt.plot(history.history['loss'], label='training')
+            plt.plot(history.history['val_loss'], label='test')
+            plt.legend()
+            plt.show()
+
+            #Show correlation between predictions and target realizations for training period respectively test period
+
+            #visually
+            fig, axs = plt.subplots(1, 2, figsize=(12, 8))
+            axs[0].set_title('Training Data')
+            axs[1].set_title('Test Data')
+            axs[0].scatter(model.predict(x_train_).flatten(), y_train)
+            axs[1].scatter(model.predict(x_test_).flatten(), y_test)
+            plt.show()
+
+            #quantitatively
+            print('Correlation between predictions and target realizations of [' + self.data_details.Asset_Name[k] +
+                  '] in the training period: ' +
+                  str(np.corrcoef(model.predict(x_train_).flatten(), y_train)[0, 1]))
+            print('Correlation between predictions and target realizations of [' + self.data_details.Asset_Name[k] +
+                  '] in the testing period: ' +
+                  str(np.corrcoef(model.predict(x_test_).flatten(), y_test)[0, 1]))
+
+            #Show the feature importance of each feature variable in relation to the used model
+            x = tf.Variable(x_train_)
+            y = tf.Variable(y_train)
+            with tf.GradientTape() as tape:
+                tape.watch(x)
+                pred = model(x)
+            grad = tf.abs(tape.gradient(pred, x))
+            grad = tf.reduce_mean(grad, axis=0)
+            feature_importance = grad.numpy() / grad.numpy().sum()
+
+            plt.figure(figsize=(10, 20))
+            plt.barh(x_train.columns[np.argsort(feature_importance)], np.sort(feature_importance))
+            plt.title('Importance of the Features of [' + self.data_details.Asset_Name[k] + ']')
+            plt.show()
+
 
 ## ---------------------------- MAIN ---------------------------- ##
 
 #(1) Configuration
 
 #Define coins that should be analysed / predicted
-coins = ['Ethereum', 'Dogecoin']
+coins = ['Ethereum']
 
 #Create an instance of the model
 model1 = AdvancedModel(coins)
@@ -432,7 +525,7 @@ model1.createSubplotsSevenDayCorrelation(model1.prepareDataFrameforCorrelationPl
 #Create heat map
 model1.createHeatMap(model1.prepareDataFrameforCorrelationPlots())
 
-#(2) Feature Engineering
+#(3) Feature Engineering
 
 #Create subplots: closing price development
 model1.createSubplotsClosingPriceDevelopment()
@@ -450,72 +543,10 @@ model1.caluclateTechnicalIndicators()
 model1.rankFeatureVariables()
 
 #Create subplots (for each coin): Correlation of the top 20 feature variables with the target variable
-#in the training period and in the test period
+#(for training period and test period)
 model1.createSubplotsHeatMap()
 
-'''''
-#(2) Step: Conduct feature engineering
-#Open To Do's
-#TODO: Delete feature variables that correlate more than 0.9 with another feature variable (only vor training period)
-#TODO: Show the correlation between the feature variables and the target variable in a scatterplot in addition to the heat map)
-#TODO: Stationary test for all the remaining feature variables + (graphics (development over the time) for training as well as the test period)
+#(4) Train and test model with suitable neuronal network
+#(scaling and result graphics included)
+model1.applyNeuralNetwork()
 
-#(3) Step: Train and test model with suitable neuronal network
-
-#Scale the data
-from sklearn.preprocessing import MinMaxScaler
-
-X_scaler = MinMaxScaler(feature_range = (0, 1))
-X_train = train_data[top_20_features].drop(['Target'], axis = 1)
-X_test = test_data[top_20_features].drop(['Target'], axis = 1)
-
-y_train = train_data['Target'].values
-y_test = test_data['Target'].values
-
-X_train_ = X_scaler.fit_transform(X_train)
-X_test_ = X_scaler.transform(X_test)
-
-#Generate neural network (TODO: Standard Recurrent Neural Network)
-import tensorflow as tf
-
-model = tf.keras.Sequential([
-    tf.keras.layers.InputLayer(input_shape = (X_train_.shape[1])),
-    tf.keras.layers.Dense(20, activation = 'selu'),
-    tf.keras.layers.Dropout(0.50),
-    tf.keras.layers.Dense(10, activation = 'selu'),
-    tf.keras.layers.Dropout(0.25),
-    tf.keras.layers.Dense(1)
-])
-
-#Show loss function for train period as well as test period
-model.compile(loss = 'mean_absolute_error', optimizer = 'adam')
-history = model.fit(X_train_, y_train, epochs = 5, validation_data = (X_test_, y_test))
-plt.plot(history.history['loss'], label = 'training')
-plt.plot(history.history['val_loss'], label = 'test')
-plt.show()
-
-#Show correlation between predictions and target realizations for training period respectively test period
-fig, axs = plt.subplots(1, 2, figsize = (12,8))
-
-axs[0].scatter(model.predict(X_train_).flatten(), y_train)
-axs[1].scatter(model.predict(X_test_).flatten(), y_test)
-plt.show()
-
-print(np.corrcoef(model.predict(X_train_).flatten(), y_train)[0, 1])
-print(np.corrcoef(model.predict(X_test_).flatten(), y_test)[0, 1])
-
-#Show the feature importance of each feature variable in relation to the used model
-X = tf.Variable(X_train_)
-y = tf.Variable(y_train)
-with tf.GradientTape() as tape:
-    tape.watch(X)
-    pred = model(X)
-grad = tf.abs(tape.gradient(pred,X))
-grad = tf.reduce_mean(grad,axis=0)
-feature_importance = grad.numpy() / grad.numpy().sum()
-
-plt.figure(figsize=(10,20))
-plt.barh(X_train.columns[np.argsort(feature_importance)], np.sort(feature_importance))
-plt.title('Feature importance')
-plt.show()
-'''''
