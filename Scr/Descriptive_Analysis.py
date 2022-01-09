@@ -7,6 +7,10 @@ import seaborn as sb
 
 class Descriptive_Analysis:
 
+    coin_ids = []
+    all_data = pd.DataFrame()
+    all_data_details = pd.DataFrame()
+
     data = pd.DataFrame()
     data_details = pd.DataFrame()
 
