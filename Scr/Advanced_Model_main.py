@@ -19,7 +19,7 @@ top_20_features = advanced_model.getTop20FeatureVariables()
 
 createHeatMapTop20FeatureVariables(coin_name, finalDataframe_training, finalDataFrame_test, top_20_features)
 
-#Set advanced model
+#Apply / set advanced model
 advanced_model.applyModel(True, 'selu', 20, 0.50, 10, 0.25, 5)
 
 #Conduct performance evaluation

@@ -14,6 +14,7 @@ class Advanced_Model():
     coin_id = 0
     coin_name = ''
 
+    all_data = pd.DataFrame()
     data = pd.DataFrame()
 
     data_training = pd.DataFrame()
@@ -32,10 +33,12 @@ class Advanced_Model():
 
     def __init__(self, coin_id, all_data, all_data_details):
 
+        self.all_data = all_data
+
         self.coin_id = coin_id
         self.data = all_data[all_data.Asset_ID == coin_id]
 
-        all_data_details = all_data_details[all_data_details.Asset_ID == coin_id]
+        self.all_data_details = all_data_details[all_data_details.Asset_ID == coin_id]
         all_data_details.reset_index(drop=True, inplace=True)
         self.coin_name = all_data_details.Asset_Name[0]
 
