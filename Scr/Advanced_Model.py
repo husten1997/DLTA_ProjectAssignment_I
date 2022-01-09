@@ -210,7 +210,7 @@ class Advanced_Model():
                                              close='Close',
                                              volume='Volume',
                                              fillna=False)
-        """"" -> derzeit nicht relevant
+        """"" -> eval ist derzeit nicht relevant
         tmp_df_eval['close_1'] = tmp_df_eval.Close.diff()
         tmp_df_eval['close_15'] = tmp_df_eval.Close.diff(15)
         tmp_df_eval['close_60'] = tmp_df_eval.Close.diff(60)
