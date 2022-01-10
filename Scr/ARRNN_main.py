@@ -6,10 +6,10 @@ from Scr.functions import performanceEval
 data = import_data("Data/")
 
 #%%
-ARRNN_mod = AR_RNN_model(data, arOrder = 60 * 60, forecastSteps = 15 * 60, coinID = 4, dimRedMethod = 'Autoencoder')
+ARRNN_mod = AR_RNN_model(data, arOrder = 60 * 60, forecastSteps = 15 * 60, coinID = 4, dimRedMethod = 'Average')
 
 #%%
-ARRNN_mod.setARRNN_model()
+ARRNN_mod.setARRNN_model(method = "Config")
 
 #%%
 Y_train_hat, Y_test_hat = ARRNN_mod.getFittedData()

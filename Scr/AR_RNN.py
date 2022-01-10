@@ -328,8 +328,8 @@ def build_ARRNN(hp):
     model.compile(loss = 'mean_squared_error', optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate))
     return model
 
-#input_shape = X_data_train_red.shape[1]
-input_shape = X_data_train.shape[1]
+input_shape = X_data_train_red.shape[1]
+#input_shape = X_data_train.shape[1]
 
 # define a recurrent network with Gated Recurrent Units
 model = tf.keras.Sequential([
@@ -356,7 +356,7 @@ Y_data_train = np.reshape(Y_data_train, Y_data_train.shape + (1,))
 Y_data_test = np.reshape(Y_data_test, Y_data_test.shape + (1,))
 
 #%% Fit RNN
-os.environ["TF_GPU_ALLOCATOR"]="cuda_malloc_async"
+#os.environ["TF_GPU_ALLOCATOR"]="cuda_malloc_async"
 ARRNN_history = model.fit(X_data_train_red, Y_data_train, epochs = 20, validation_data = (X_data_test_red, Y_data_test), batch_size=1024)
 
 #%% History Plot

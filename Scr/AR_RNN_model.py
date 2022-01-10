@@ -4,8 +4,10 @@ import numpy as np
 class AR_RNN_model:
     def __init__(self, data, arOrder, forecastSteps, coinID, dimRedMethod):
         self.dimRedMethod_dic = {   'Average': 'Average',
-                                    'Autoencoder': 'Autoencoder'}
+                                    'Autoencoder': 'Autoencoder',
+                                    'RNNAutoencoder': 'RNNAutoencoder'}
 
+        #TODO: Implement nonlinearity
         self.arOrder = arOrder
         self.forecastSteps = forecastSteps
         self.coinID = coinID
@@ -71,7 +73,6 @@ class AR_RNN_model:
         import os
         os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-        #TODO: Fix Autoencoder
         import tensorflow as tf
 
         self.Encoder = tf.keras.Sequential([
@@ -86,6 +87,37 @@ class AR_RNN_model:
 
         self.Autoencoder = tf.keras.Sequential([self.Encoder, self.Decoder])
         self.Autoencoder.compile(loss='mse', optimizer='adam')
+        self.Autoencoder.summary()
+        self.Autoencoder.fit(trainData, trainData, epochs = epochs, verbose = 1, validation_data = (testData, testData), batch_size=32)
+
+    def setupRNNAutoencoder(self, trainData, testData, outputDim, epochs = 20):
+        import os
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+        #TODO: Fix RNNAutoencoder
+        import tensorflow as tf
+        print(trainData.shape)
+
+        self.Encoder = tf.keras.Sequential([
+            tf.keras.layers.GRU(outputDim, return_sequences=True, input_shape=(trainData.shape[1], 1)),
+            tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(1))
+        ])
+        self.Encoder.summary()
+
+        self.Decoder = tf.keras.Sequential([
+            tf.keras.layers.InputLayer(input_shape=(outputDim, 1)),
+            #tf.keras.layers.RepeatVector(lookback),
+            #tf.keras.layers.GRU(5, return_sequences=True),
+            tf.keras.layers.GRU(1, return_sequences=True),
+            tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(1))
+
+        ])
+        self.Decoder.summary()
+
+        self.Autoencoder = tf.keras.Sequential([self.Encoder, self.Decoder])
+        self.Autoencoder.compile(loss='mse', optimizer='adam')
+        self.Autoencoder.summary()
+
+        print("Started fit")
         self.Autoencoder.fit(trainData, trainData, epochs = epochs, verbose = 1, validation_data = (testData, testData), batch_size=32)
 
 
@@ -144,6 +176,12 @@ class AR_RNN_model:
                 self.setupAutoencoder(trainData = X_featuresTrain, testData = X_featuresTest, outputDim = outputDim)
 
             weights = np.matrix(self.Encoder.get_weights()[0])
+
+        elif dimRedMethod == self.dimRedMethod_dic["RNNAutoencoder"]:
+            if self.Encoder is None or self.Decoder is None or self.Autoencoder is None:
+                X_featuresTrain, X_featuresTest =  self.generateFeatureSet()[:2]
+                self.setupRNNAutoencoder(trainData = X_featuresTrain, testData = X_featuresTest, outputDim = outputDim)
+
 
         elif dimRedMethod == self.dimRedMethod_dic["Average"]:
             weights = np.zeros((3600, 60))
@@ -245,7 +283,6 @@ class AR_RNN_model:
         Y_featuresTest = np.reshape(Y_featuresTest, Y_featuresTest.shape + (1,))
 
         if method == "Tuner":
-            #TODO: Fix tuner
             import keras_tuner as kt
 
             tuner = kt.RandomSearch(self.buildARRNN_KerasTuner, objective='val_loss', max_trials=5)
@@ -273,6 +310,9 @@ class AR_RNN_model:
             plt.plot(history.history['val_loss'], label='validation_loss')
             plt.legend()
             plt.show()
+
+        else:
+            print("Unknown Method")
 
     def getARRNN_model(self):
         return self.ARRNN_model
