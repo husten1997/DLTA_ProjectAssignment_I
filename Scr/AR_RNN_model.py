@@ -2,7 +2,7 @@ import numpy as np
 
 
 class AR_RNN_model:
-    def __init__(self, data, arOrder, forecastSteps, coinID):
+    def __init__(self, data, arOrder, forecastSteps, coinID, dimRedMethod):
         self.dimRedMethod_dic = {   'Average': 'Average',
                                     'Autoencoder': 'Autoencoder'}
 
@@ -11,6 +11,8 @@ class AR_RNN_model:
         self.coinID = coinID
 
         self.setupData(data, coinID)
+
+        self.dimRedMethod = dimRedMethod
 
     featureSet = None
 
@@ -66,22 +68,25 @@ class AR_RNN_model:
 
 
     def setupAutoencoder(self, trainData, testData, outputDim, epochs = 20):
+        import os
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
         #TODO: Fix Autoencoder
         import tensorflow as tf
 
         self.Encoder = tf.keras.Sequential([
-            tf.keras.layers.Dense(outputDim, activation='linear', input_shape=[trainData.shape[1]],
+            tf.keras.layers.Dense(outputDim, activation = 'linear', input_shape=[trainData.shape[1]],
                                   use_bias=False)
         ])
 
         self.Decoder = tf.keras.Sequential([
-            tf.keras.layers.Dense(trainData.shape[1], activation='linear', input_shape=[outputDim],
+            tf.keras.layers.Dense(trainData.shape[1], activation = 'linear', input_shape=[outputDim],
                                   use_bias=False)
         ])
 
         self.Autoencoder = tf.keras.Sequential([self.Encoder, self.Decoder])
         self.Autoencoder.compile(loss='mse', optimizer='adam')
-        self.Autoencoder.fit(trainData, trainData, epochs = 20, verbose = 1, validation_data = (testData, testData))
+        self.Autoencoder.fit(trainData, trainData, epochs = epochs, verbose = 1, validation_data = (testData, testData), batch_size=32)
 
 
     def generateFeatureSet(self, variable = 'Target'):
@@ -171,9 +176,12 @@ class AR_RNN_model:
         return X_redFeaturesTrain, X_redFeaturesTest, Y_featuresTrain, Y_featuresTest
 
 
-    def buildARRNN_KerasTuner(hp):
+    def buildARRNN_KerasTuner(self, hp):
+        import os
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
         import tensorflow as tf
-        X_featuresTrain = self.generateReducedFeatureSet('Average')
+        X_featuresTrain = self.generateReducedFeatureSet(self.dimRedMethod)[0]
         input_shape = X_featuresTrain.shape[1]
 
         model = tf.keras.Sequential()
@@ -197,8 +205,11 @@ class AR_RNN_model:
 
 
     def buildARRNN(self, config):
+        import os
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
         import tensorflow as tf
-        X_featuresTrain = self.generateReducedFeatureSet('Average')[0]
+        X_featuresTrain = self.generateReducedFeatureSet(self.dimRedMethod)[0]
         input_shape = X_featuresTrain.shape[1]
 
         model = tf.keras.Sequential()
@@ -225,7 +236,7 @@ class AR_RNN_model:
 
     def setARRNN_model(self, method = "Config", config = None, dimRedMethod = 'Average', epochs = 20):
         X_redFeaturesTrain, X_redFeaturesTest, Y_featuresTrain, Y_featuresTest = self.generateFitFeaturesSet(
-            dimRedMethod = dimRedMethod)
+            dimRedMethod = self.dimRedMethod)
 
         X_redFeaturesTrain = np.reshape(X_redFeaturesTrain, X_redFeaturesTrain.shape + (1,))
         X_redFeaturesTest = np.reshape(X_redFeaturesTest, X_redFeaturesTest.shape + (1,))
@@ -239,22 +250,23 @@ class AR_RNN_model:
 
             tuner = kt.RandomSearch(self.buildARRNN_KerasTuner, objective='val_loss', max_trials=5)
 
-            tuner.search(X_redFeaturesTrain, Y_featuresTrain, epochs=10, validation_data=(X_redFeaturesTest, Y_featuresTest),
-                         batch_size=1024)
+            tuner.search(X_redFeaturesTrain, Y_featuresTrain, epochs = 10, validation_data=(X_redFeaturesTest, Y_featuresTest),
+                         batch_size = 1024)
             self.ARRNN_model = tuner.get_best_models()[0]
 
         elif method == "Config":
-            config = {'LSTM': True,
-                      'LSTMunits': 60,
-                      'LSTMactivation': 'relu',
-                      'GRUunits': 60,
-                      'dropout': False,
-                      'lr': 1e-2 } # 0.00068464
+            if config is None:
+                config = {'LSTM': True,
+                          'LSTMunits': 60,
+                          'LSTMactivation': 'relu',
+                          'GRUunits': 60,
+                          'dropout': False,
+                          'lr': 1e-2 } # 0.00068464
 
             self.ARRNN_model = self.buildARRNN(config)
-            history = self.ARRNN_model.fit(X_redFeaturesTrain, Y_featuresTrain, epochs = 20, validation_data = (X_redFeaturesTest, Y_featuresTest), batch_size=512)
-            #TODO: History plot
+            history = self.ARRNN_model.fit(X_redFeaturesTrain, Y_featuresTrain, epochs = epochs, validation_data = (X_redFeaturesTest, Y_featuresTest), batch_size=1024)
 
+            # History Plot
             import matplotlib.pyplot as plt
 
             plt.plot(history.history['loss'], label='loss')
@@ -267,7 +279,7 @@ class AR_RNN_model:
 
     def getFittedData(self):
         X_redFeaturesTrain, X_redFeaturesTest = self.generateFitFeaturesSet(
-            dimRedMethod='Average')[:2]
+            dimRedMethod=self.dimRedMethod)[:2]
 
         X_redFeaturesTrain = np.reshape(X_redFeaturesTrain, X_redFeaturesTrain.shape + (1,))
         X_redFeaturesTest = np.reshape(X_redFeaturesTest, X_redFeaturesTest.shape + (1,))
