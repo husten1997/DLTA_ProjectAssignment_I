@@ -8,6 +8,7 @@ class AR_RNN_model:
                                     'RNNAutoencoder': 'RNNAutoencoder'}
 
         #TODO: Implement nonlinearity
+        #TODO: Implement scaler
         self.arOrder = arOrder
         self.forecastSteps = forecastSteps
         self.coinID = coinID
@@ -75,16 +76,19 @@ class AR_RNN_model:
 
         import tensorflow as tf
 
+        # setup encoder as one layer forward NN
         self.Encoder = tf.keras.Sequential([
             tf.keras.layers.Dense(outputDim, activation = 'linear', input_shape=[trainData.shape[1]],
                                   use_bias=False)
         ])
 
+        # setup decoder as one layer forward NN
         self.Decoder = tf.keras.Sequential([
             tf.keras.layers.Dense(trainData.shape[1], activation = 'linear', input_shape=[outputDim],
                                   use_bias=False)
         ])
 
+        # combine encoder and decoder to single-layer autoencoder
         self.Autoencoder = tf.keras.Sequential([self.Encoder, self.Decoder])
         self.Autoencoder.compile(loss='mse', optimizer='adam')
         self.Autoencoder.summary()
@@ -97,12 +101,14 @@ class AR_RNN_model:
         import tensorflow as tf
         print(trainData.shape)
 
+        # setup RNN encoder
         self.Encoder = tf.keras.Sequential([
             tf.keras.layers.GRU(outputDim, return_sequences=True, input_shape=(trainData.shape[1], 1)),
             tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(1))
         ])
         self.Encoder.summary()
 
+        # setup RNN decoder
         self.Decoder = tf.keras.Sequential([
             tf.keras.layers.InputLayer(input_shape=(outputDim, 1)),
             #tf.keras.layers.RepeatVector(lookback),
@@ -113,6 +119,7 @@ class AR_RNN_model:
         ])
         self.Decoder.summary()
 
+        # combine RNN encoder an decoder
         self.Autoencoder = tf.keras.Sequential([self.Encoder, self.Decoder])
         self.Autoencoder.compile(loss='mse', optimizer='adam')
         self.Autoencoder.summary()
@@ -162,14 +169,21 @@ class AR_RNN_model:
         return X_featuresTrain, X_featuresTest, Y_featuresTrain, Y_featuresTest
 
 
-    def generateWeightMatrix(self, dimRedMethod, outputDim = None):
+    def generateWeightMatrix(self, dimRedMethod, outputDim = None, dimRedRatio = None):
         import numpy as np
 
         weights = None
 
+        # Check outputdim validity
         if outputDim is None:
             outputDim = int(self.arOrder / 60)
+            dimRedRatio = 60
+        elif self.arOrder % outputDim != 0:
+            print("outputDimension has to be an integer fraction of the arOrder, therefore replacing outputDim by " + str(int(self.arOrder / 60)))
+            outputDim = int(self.arOrder / 60)
+            dimRedRatio = 60
 
+        # Select dim reduction method
         if dimRedMethod == self.dimRedMethod_dic["Autoencoder"]:
             if self.Encoder is None or self.Decoder is None or self.Autoencoder is None:
                 X_featuresTrain, X_featuresTest =  self.generateFeatureSet()[:2]
@@ -184,11 +198,11 @@ class AR_RNN_model:
 
 
         elif dimRedMethod == self.dimRedMethod_dic["Average"]:
-            weights = np.zeros((3600, 60))
+            weights = np.zeros((self.arOrder, outputDim))
 
-            for j in range(60):
-                for i in range(60):
-                    weights[(j * 60) + i, j] = 1 / 60
+            for j in range(outputDim):
+                for i in range(dimRedRatio):
+                    weights[(j * dimRedRatio) + i, j] = 1 / dimRedRatio
 
         else:
             print("Unknown Method")
@@ -199,18 +213,27 @@ class AR_RNN_model:
     def generateReducedFeatureSet(self, dimRedMethod):
         import numpy as np
 
+        # gather feature matrices
         X_featuresTrain, X_featuresTest = self.generateFeatureSet()[:2]
+
+        # gather weights matrix
         weights = self.generateWeightMatrix(dimRedMethod = dimRedMethod)
 
-        X_redFeaturesTrain = np.array(np.matmul(X_featuresTrain.reshape((-1, 3600)), weights))
-        X_redFeaturesTest = np.array(np.matmul(X_featuresTest.reshape((-1, 3600)), weights))
+        # reduced feature matrix is result of product of feature matrix with weights matrix
+        X_redFeaturesTrain = np.array(np.matmul(X_featuresTrain.reshape((-1, self.arOrder)), weights))
+        X_redFeaturesTest = np.array(np.matmul(X_featuresTest.reshape((-1, self.arOrder)), weights))
 
         return X_redFeaturesTrain, X_redFeaturesTest
 
 
     def generateFitFeaturesSet(self, dimRedMethod):
+        # gather X matrices
         X_redFeaturesTrain, X_redFeaturesTest = self.generateReducedFeatureSet(dimRedMethod)
+
+        # gather Y matrices (among other)
         X_featuresTrain, X_featuresTest, Y_featuresTrain, Y_featuresTest = self.generateFeatureSet()
+
+        # return the matrices which are required for the RNN fit
         return X_redFeaturesTrain, X_redFeaturesTest, Y_featuresTrain, Y_featuresTest
 
 

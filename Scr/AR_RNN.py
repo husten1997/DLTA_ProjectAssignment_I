@@ -345,6 +345,24 @@ model = tf.keras.Sequential([
 model.compile(loss = 'mean_squared_error', optimizer = 'adam')
 model.summary()
 
+#%%
+
+# define a recurrent network with Gated Recurrent Units
+model = tf.keras.Sequential([
+    #tf.keras.layers.InputLayer(input_shape = (ar_order, 1)),
+    tf.keras.layers.InputLayer(input_shape = (1)),
+    tf.keras.layers.RepeatVector(60),
+    #tf.keras.layers.Dense(60, activation = 'linear', input_shape = [ar_order], use_bias = False),
+    #tf.keras.layers.GRU(5),
+    tf.keras.layers.LSTM(120, return_sequences = False)
+    #tf.keras.layers.GRU(60)
+    ,tf.keras.layers.Dense(1)
+])
+
+model.compile(loss = 'mean_squared_error', optimizer = 'adam')
+model.summary()
+
+
 #%% Reshape Data
 
 X_data_train_red = np.reshape(X_data_train_red, X_data_train_red.shape + (1,))
@@ -358,6 +376,14 @@ Y_data_test = np.reshape(Y_data_test, Y_data_test.shape + (1,))
 #%% Fit RNN
 #os.environ["TF_GPU_ALLOCATOR"]="cuda_malloc_async"
 ARRNN_history = model.fit(X_data_train_red, Y_data_train, epochs = 20, validation_data = (X_data_test_red, Y_data_test), batch_size=1024)
+
+#%% Fit RNN
+#os.environ["TF_GPU_ALLOCATOR"]="cuda_malloc_async"
+price_train_ = price_train_[(len(price_train_) % 60) : ]
+price_train_.reshape(-1, 60).mean(axis = 1).reshape(-1, 1)
+
+#%%
+ARRNN_history = model.fit(price_train_[:-1], price_train_[1:], epochs = 20, validation_data = (price_test_[:-1], price_test_[1:]), batch_size=1024)
 
 #%% History Plot
 import matplotlib.pylab as plt
