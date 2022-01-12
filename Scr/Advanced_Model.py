@@ -11,7 +11,7 @@ import tensorflow as tf
 
 class Advanced_Model():
 
-    coin_id = 0
+    #coin_id = 0
     coin_name = ''
 
     all_data = pd.DataFrame()
@@ -136,14 +136,15 @@ class Advanced_Model():
     def mergeFeatureSets(self):
 
         #Get various feature sets
+        market_movements_autoencoder_train, market_movements_autoencoder_test = self.market_indicators()
         tech_indicators_training, tech_indicators_test, tech_indicators_eval = self.calculateTechnicalIndicators()
         #TODO: calculate further feature sets, e.g. market variables..
 
         #TODO: merge different feature sets to one final feature set (using pd.merge() function)..
 
         #Only temporary code (see TODO's)
-        self.featureSet_training = tech_indicators_training
-        self.featureSet_test = tech_indicators_test
+        self.featureSet_training = tech_indicators_training.join(market_movements_autoencoder_train)
+        self.featureSet_test = tech_indicators_test.join(market_movements_autoencoder_test)
         self.featureSet_eval = tech_indicators_eval
 
     def setTop20FeatureVariables(self):
@@ -153,9 +154,9 @@ class Advanced_Model():
         find_corr_features = tmp_df_training.corr(method='spearman')['Target'].abs().sort_values(ascending=False)
 
         print('20 feature variables of [' +
-            self.coin_name +
-            '], that correlate highest with the target variable: \n' +
-             str(find_corr_features[1:21]))
+              self.coin_name +
+              '], that correlate highest with the target variable: \n' +
+              str(find_corr_features[1:21]))
 
         self.top_20_features = list(find_corr_features[:21].index)
 
@@ -255,6 +256,115 @@ class Advanced_Model():
 
         return tmp_df_training, tmp_df_test, tmp_df_eval
 
+
+    def market_indicators(self):
+
+        self.all_data.set_index('timestamp', inplace=True)
+        #all_data = all_data.reindex(range(all_data.index[0], all_data.index[-1] + 60, 60), method='pad')
+        #all_data.sort_index(inplace=True)
+
+        training_start, test_start, eval_start = self.getPeriods()
+
+        data_training_all = self.all_data[(self.all_data.index >= training_start) & (self.all_data.index <= test_start)]
+        data_test_all = self.all_data[(self.all_data.index >= test_start) & (self.all_data.index <= eval_start)]
+        #variable names
+        variables = ["Close", "Open", "High", "Low", "Volume"]
+
+        #create pivot table for training data
+        data_pivot_train = data_training_all.pivot_table(index = data_training_all.index, columns = 'Asset_ID')
+
+        #create pivot table for testing data
+        data_pivot_test = data_test_all.pivot_table(index = data_test_all.index, columns = 'Asset_ID')
+
+        X_scaler = MinMaxScaler()
+
+        #Seperate sorted variables from each other and scale them
+        for variable in variables:
+            globals()[str(variable) + "_data_train"] = data_pivot_train[variable]
+            globals()[str(variable) + "_data_train_"] = pd.DataFrame(X_scaler.fit_transform(globals()[str(variable) + "_data_train"]), index=globals()[str(variable) + "_data_train"].index, columns=globals()[str(variable) + "_data_train"].columns)
+            globals()[str(variable) + "_data_train_"] = globals()[str(variable) + "_data_train_"].dropna()
+
+            #Autoencode the training data
+            print(f"-----Autoencoding {variable} training data-----")
+            encoder = tf.keras.Sequential([
+                tf.keras.layers.InputLayer(input_shape = (globals()[str(variable) + "_data_train_"].shape[1])),
+                tf.keras.layers.Dense(5),
+                tf.keras.layers.Dense(1)
+            ])
+            decoder = tf.keras.Sequential([
+                tf.keras.layers.InputLayer(input_shape = (1)),
+                tf.keras.layers.Dense(10),
+                tf.keras.layers.Dense(globals()[str(variable) + "_data_train_"].shape[1])
+            ])
+            autoencoder = tf.keras.Sequential([encoder, decoder])
+            autoencoder.compile(loss = 'mean_squared_error', optimizer = 'adam')
+            autoencoder.fit(globals()[str(variable) + "_data_train_"], globals()[str(variable) + "_data_train_"], epochs = 5, batch_size = 100)
+            globals()[str(variable) + "_ae_train"] = encoder.predict(globals()[str(variable) + "_data_train_"]).flatten()
+
+        #create dataframe
+        market_movements_autoencoder_train = pd.DataFrame(columns = [f"{variable}_market" for variable in variables], index = globals()[str(variable) + "_data_train_"].index)
+
+        #fill dataframe
+        for variable in variables:
+            market_movements_autoencoder_train[f"{variable}"]  = globals()[str(variable) + "_ae_train"]
+
+        market_movements_autoencoder_train = ta.add_all_ta_features(market_movements_autoencoder_train,
+                                                                    open = 'Open',
+                                                                    high = 'High',
+                                                                    low = 'Low',
+                                                                    close = 'Close',
+                                                                    volume = 'Volume',
+                                                                    fillna = False)
+
+        market_movements_autoencoder_train.columns = [col_name + '_market' for col_name in market_movements_autoencoder_train.columns]
+        market_movements_autoencoder_train.fillna(method = "pad", inplace = True)
+        market_movements_autoencoder_train = market_movements_autoencoder_train.drop(market_movements_autoencoder_train.columns[market_movements_autoencoder_train.isnull().sum() > 100], axis = 1)
+
+        for variable in variables:
+            globals()[str(variable) + "_data_test"] = data_pivot_test[variable]
+            globals()[str(variable) + "_data_test_"] = pd.DataFrame(X_scaler.fit_transform(globals()[str(variable) + "_data_test"]), index=globals()[str(variable) + "_data_test"].index, columns=globals()[str(variable) + "_data_test"].columns)
+            globals()[str(variable) + "_data_test_"] = globals()[str(variable) + "_data_test_"].dropna()
+
+            #Autoencode the testing data
+            print(f"-----Autoencoding {variable} test data-----")
+            encoder = tf.keras.Sequential([
+                tf.keras.layers.InputLayer(input_shape = (globals()[str(variable) + "_data_test_"].shape[1])),
+                tf.keras.layers.Dense(5),
+                tf.keras.layers.Dense(1)
+            ])
+            decoder = tf.keras.Sequential([
+                tf.keras.layers.InputLayer(input_shape = (1)),
+                tf.keras.layers.Dense(10),
+                tf.keras.layers.Dense(globals()[str(variable) + "_data_test_"].shape[1])
+            ])
+            autoencoder = tf.keras.Sequential([encoder, decoder])
+            autoencoder.compile(loss = 'mean_squared_error', optimizer = 'adam')
+            autoencoder.fit(globals()[str(variable) + "_data_test_"], globals()[str(variable) + "_data_test_"], epochs = 5, batch_size = 100)
+            globals()[str(variable) + "_ae_test"] = encoder.predict(globals()[str(variable) + "_data_test_"]).flatten()
+
+            #create dataframe
+        market_movements_autoencoder_test = pd.DataFrame(columns = [f"{variable}_market" for variable in variables], index = globals()[str(variable) + "_data_test_"].index)
+
+        #fill dataframe
+        for variable in variables:
+            market_movements_autoencoder_test[f"{variable}"]  = globals()[str(variable) + "_ae_test"]
+
+        market_movements_autoencoder_test = ta.add_all_ta_features(market_movements_autoencoder_test,
+                                                                   open = 'Open',
+                                                                   high = 'High',
+                                                                   low = 'Low',
+                                                                   close = 'Close',
+                                                                   volume = 'Volume',
+                                                                   fillna = False)
+
+        market_movements_autoencoder_test.columns = [col_name + '_market' for col_name in market_movements_autoencoder_test.columns]
+        market_movements_autoencoder_test.fillna(method = "pad", inplace = True)
+        market_movements_autoencoder_test = market_movements_autoencoder_test.drop(market_movements_autoencoder_test.columns[market_movements_autoencoder_test.isnull().sum() > 100], axis = 1)
+
+
+        return market_movements_autoencoder_train, market_movements_autoencoder_test
+
+
     def mergeFinalFeatureSetAndTargetVariable(self):
 
         target_variable_training, target_variable_test, target_variable_eval = self.getTargetVariable()
@@ -278,12 +388,12 @@ class Advanced_Model():
 
         if config['fnn']:
             model = tf.keras.Sequential([
-                    tf.keras.layers.InputLayer(input_shape=(x_train_.shape[1])),
-                    tf.keras.layers.Dense(config['neurons_first_layer'], activation=config['active_func']),
-                    tf.keras.layers.Dropout(config['dropout_first_layer']),
-                    tf.keras.layers.Dense(config['neurons_second_layer'], activation=config['active_func']),
-                    tf.keras.layers.Dropout(config['dropout_second_layer']),
-                    tf.keras.layers.Dense(1)
+                tf.keras.layers.InputLayer(input_shape=(x_train_.shape[1])),
+                tf.keras.layers.Dense(config['neurons_first_layer'], activation=config['active_func']),
+                tf.keras.layers.Dropout(config['dropout_first_layer']),
+                tf.keras.layers.Dense(config['neurons_second_layer'], activation=config['active_func']),
+                tf.keras.layers.Dropout(config['dropout_second_layer']),
+                tf.keras.layers.Dense(1)
             ])
         else:
             print('A other neural network than the Forward Neural Network is currently not defined')
