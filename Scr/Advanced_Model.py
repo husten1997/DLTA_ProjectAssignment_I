@@ -8,6 +8,7 @@ import ta
 import seaborn as sb
 from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
+import keras_tuner as kt
 from statsmodels.tsa.stattools import adfuller
 
 class Advanced_Model():
@@ -60,7 +61,7 @@ class Advanced_Model():
         self.mergeFeatureSets()
         self.setTop20FeatureVariables()
 
-    def applyModel(self, fnn, active_func, neurons_first, dropout_first, neurons_second, dropout_second, epochs):
+    def applyModel(self, fnn, active_func, neurons_first, dropout_first, neurons_second, dropout_second, epochs, method = "FNN"):
 
         tmp_df_training = self.mergeFinalFeatureSetAndTargetVariable()[0]
         tmp_df_test = self.mergeFinalFeatureSetAndTargetVariable()[1]
@@ -74,19 +75,26 @@ class Advanced_Model():
         x_train_ = self.scaling(x_train)
         x_test_ = self.scaling(x_test)
 
-        config = {'fnn': fnn,
-                  'active_func': active_func,
-                  'neurons_first_layer': neurons_first,
-                  'dropout_first_layer': dropout_first,
-                  'neurons_second_layer': neurons_second,
-                  'dropout_second_layer': dropout_second}
+        if method == "FNN":
+            config = {'fnn': fnn,
+                    'active_func': active_func,
+                    'neurons_first_layer': neurons_first,
+                    'dropout_first_layer': dropout_first,
+                    'neurons_second_layer': neurons_second,
+                    'dropout_second_layer': dropout_second}
 
-        self.adv_model = self.buildAdvModel(config, x_train_)
-        history = self.adv_model.fit(x_train_, self.y_train, epochs=epochs, validation_data=(x_test_, self.y_test))
-        plt.plot(history.history['loss'], label='training')
-        plt.plot(history.history['val_loss'], label='test')
-        plt.legend()
-        plt.show()
+            self.adv_model = self.buildAdvModel(config, x_train_)
+            history = self.adv_model.fit(x_train_, self.y_train, epochs=epochs, validation_data=(x_test_, self.y_test))
+            plt.plot(history.history['loss'], label='training')
+            plt.plot(history.history['val_loss'], label='test')
+            plt.legend()
+            plt.show()
+
+        elif method == "Tuner": # TODO: Tuner currently broken due to missing input shape
+            tuner = kt.RandomSearch(self.buildAdvModel_KerasTuner, objective='val_loss', max_trials=5)
+
+            tuner.search(x_train_, self.y_train, epochs = 10, validation_data=(x_test_, self.y_test), batch_size = 1024)
+            self.adv_model = tuner.get_best_models()[0]
 
         self.y_train_hat = self.adv_model.predict(x_train_).flatten()
         self.y_test_hat = self.adv_model.predict(x_test_).flatten()
@@ -139,30 +147,14 @@ class Advanced_Model():
         #Get various feature sets
         market_movements_autoencoder_train, market_movements_autoencoder_test = self.market_indicators()
         tech_indicators_training, tech_indicators_test, tech_indicators_eval = self.calculateTechnicalIndicators()
+        #TODO: calculate further feature sets, e.g. market variables..
 
+        #TODO: merge different feature sets to one final feature set (using pd.merge() function)..
+
+        #Only temporary code (see TODO's)
         self.featureSet_training = tech_indicators_training.join(market_movements_autoencoder_train)
         self.featureSet_test = tech_indicators_test.join(market_movements_autoencoder_test)
         self.featureSet_eval = tech_indicators_eval
-
-    def NonLinImportance(self):
-
-        indices = []
-
-        for variable in self.featureSet_training.columns:
-            for poly in range(1,4):
-                index = f"{variable}_{poly}"
-                indices.append(index)
-
-        corr_matrix = pd.DataFrame(columns = indices, index = self.featureSet_training.index)
-
-        for variable in self.featureSet_training.columns:
-            for poly in range(1,4):
-                corr_matrix[f"{variable}_{poly}"] = self.featureSet_training[f"{variable}"].values**poly
-
-        coin_find_corr_features = corr_matrix.corr(method = 'spearman')['Target_1'].abs().sort_values(ascending = False)
-
-        self.nlin_featureselection = list((coin_find_corr_features > 0.03).index)
-
 
     def setTop20FeatureVariables(self):
 
@@ -277,6 +269,8 @@ class Advanced_Model():
     def market_indicators(self):
 
         self.all_data.set_index('timestamp', inplace=True)
+        #all_data = all_data.reindex(range(all_data.index[0], all_data.index[-1] + 60, 60), method='pad')
+        #all_data.sort_index(inplace=True)
 
         training_start, test_start, eval_start = self.getPeriods()
 
@@ -379,29 +373,9 @@ class Advanced_Model():
 
         return market_movements_autoencoder_train, market_movements_autoencoder_test
 
-    def stationarity_transformation(self):
-        for variable in self.featureSet_training.columns:
-            timeseries = self.featureSet_training[variable]
-            result = adfuller(timeseries)
-            p_value = result[1]
-            if p_value < 0.05:
-                self.featureSet_training[variable] = self.featureSet_training[variable].pct_change()
-
-        for variable in self.featureSet_test.columns:
-            timeseries = self.featureSet_training[variable]
-            result = adfuller(timeseries)
-            p_value = result[1]
-            if p_value < 0.05:
-                self.featureSet_test[variable] = self.featureSet_test[variable].pct_change()
-
-        for variable in self.featureSet_eval.columns:
-            timeseries = self.featureSet_eval[variable]
-            result = adfuller(timeseries)
-            p_value = result[1]
-            if p_value < 0.05:
-                self.featureSet_eval[variable] = self.featureSet_eval[variable].pct_change()
 
     def mergeFinalFeatureSetAndTargetVariable(self):
+
         target_variable_training, target_variable_test, target_variable_eval = self.getTargetVariable()
 
         #Inner join
@@ -436,6 +410,30 @@ class Advanced_Model():
         model.compile(loss='mean_absolute_error', optimizer='adam')
         model.summary()
 
+        return model
+
+    def buildAdvModel_KerasTuner(self, hp):
+        model = tf.keras.Sequential()
+
+        # TODO: Find a way to get the input_shape without using the x_train_ parameter from above
+        input_shape = 10 # Would be x_train_.shape[1], but we dont have parameters with the Keras_tuner (or do we?)
+        model.add(tf.keras.layers.InputLayer(input_shape=(input_shape)))
+
+        model.add(tf.keras.layers.Dense(hp.Choice('neurons_first_layer', [60, 120, 240]), activation = hp.Choice('active_func_L1', ["relu", "tanh", "linear", "sigmoid"])))
+        
+        if hp.Boolean("dropout_L1"):
+            model.add(tf.keras.layers.Dropout(hp.Choice('dropout_first_layer', [0.125, 0.25])))
+        
+        model.add(tf.keras.layers.Dense(hp.Choice('neurons_second_layer', [60, 120, 240]), activation = hp.Choice('active_func_L2', ["relu", "tanh", "linear", "sigmoid"]) ))
+
+        if hp.Boolean("dropout_L2"):
+            model.add(tf.keras.layers.Dropout(hp.Choice('dropout_second_layer', [0.125, 0.25]))) 
+        
+        model.add(tf.keras.layers.Dense(1))
+
+        learning_rate = hp.Float("lr", min_value=1e-4, max_value=1e-2, sampling="log")
+
+        model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate))
         return model
 
     def showFeatureImportance(self, x_train_, x_train, y_train):
