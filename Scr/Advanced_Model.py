@@ -8,6 +8,7 @@ import ta
 import seaborn as sb
 from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
+from statsmodels.tsa.stattools import adfuller
 
 class Advanced_Model():
 
@@ -138,14 +139,30 @@ class Advanced_Model():
         #Get various feature sets
         market_movements_autoencoder_train, market_movements_autoencoder_test = self.market_indicators()
         tech_indicators_training, tech_indicators_test, tech_indicators_eval = self.calculateTechnicalIndicators()
-        #TODO: calculate further feature sets, e.g. market variables..
 
-        #TODO: merge different feature sets to one final feature set (using pd.merge() function)..
-
-        #Only temporary code (see TODO's)
         self.featureSet_training = tech_indicators_training.join(market_movements_autoencoder_train)
         self.featureSet_test = tech_indicators_test.join(market_movements_autoencoder_test)
         self.featureSet_eval = tech_indicators_eval
+
+    def NonLinImportance(self):
+
+        indices = []
+
+        for variable in self.featureSet_training.columns:
+            for poly in range(1,4):
+                index = f"{variable}_{poly}"
+                indices.append(index)
+
+        corr_matrix = pd.DataFrame(columns = indices, index = self.featureSet_training.index)
+
+        for variable in self.featureSet_training.columns:
+            for poly in range(1,4):
+                corr_matrix[f"{variable}_{poly}"] = self.featureSet_training[f"{variable}"].values**poly
+
+        coin_find_corr_features = corr_matrix.corr(method = 'spearman')['Target_1'].abs().sort_values(ascending = False)
+
+        self.nlin_featureselection = list((coin_find_corr_features > 0.03).index)
+
 
     def setTop20FeatureVariables(self):
 
@@ -260,8 +277,6 @@ class Advanced_Model():
     def market_indicators(self):
 
         self.all_data.set_index('timestamp', inplace=True)
-        #all_data = all_data.reindex(range(all_data.index[0], all_data.index[-1] + 60, 60), method='pad')
-        #all_data.sort_index(inplace=True)
 
         training_start, test_start, eval_start = self.getPeriods()
 
@@ -364,9 +379,29 @@ class Advanced_Model():
 
         return market_movements_autoencoder_train, market_movements_autoencoder_test
 
+    def stationarity_transformation(self):
+        for variable in self.featureSet_training.columns:
+            timeseries = self.featureSet_training[variable]
+            result = adfuller(timeseries)
+            p_value = result[1]
+            if p_value < 0.05:
+                self.featureSet_training[variable] = self.featureSet_training[variable].pct_change()
+
+        for variable in self.featureSet_test.columns:
+            timeseries = self.featureSet_training[variable]
+            result = adfuller(timeseries)
+            p_value = result[1]
+            if p_value < 0.05:
+                self.featureSet_test[variable] = self.featureSet_test[variable].pct_change()
+
+        for variable in self.featureSet_eval.columns:
+            timeseries = self.featureSet_eval[variable]
+            result = adfuller(timeseries)
+            p_value = result[1]
+            if p_value < 0.05:
+                self.featureSet_eval[variable] = self.featureSet_eval[variable].pct_change()
 
     def mergeFinalFeatureSetAndTargetVariable(self):
-
         target_variable_training, target_variable_test, target_variable_eval = self.getTargetVariable()
 
         #Inner join
