@@ -346,7 +346,7 @@ model.compile(loss = 'mean_squared_error', optimizer = 'adam')
 model.summary()
 
 #%%
-
+import tensorflow as tf
 # define a recurrent network with Gated Recurrent Units
 model = tf.keras.Sequential([
     #tf.keras.layers.InputLayer(input_shape = (ar_order, 1)),
@@ -398,6 +398,10 @@ plt.show()
 Y_train_hat = model.predict(X_data_train_red)
 Y_test_hat = model.predict(X_data_test_red)
 
+#%% Model performance
+Y_train_hat = model.predict(price_train_[:-1])
+Y_test_hat = model.predict(price_test_[:-1])
+
 #%% Test
 from scipy.stats.stats import pearsonr
 
@@ -408,6 +412,10 @@ corr = lambda x, y: (cov(x, y))/np.sqrt(var(x) * var(y))
 #%%
 print("In-sample corr: " + str(corr(Y_train_hat.reshape((-1)), Y_data_train.reshape((-1)))))
 print("Out-of-sample corr: " + str(corr(Y_test_hat.reshape((-1)), Y_data_test.reshape((-1)))))
+
+#%%
+print("In-sample corr: " + str(corr(Y_train_hat.reshape((-1)), price_train_[1:].reshape((-1)))))
+print("Out-of-sample corr: " + str(corr(Y_test_hat.reshape((-1)), price_test_[1:].reshape((-1)))))
 
 
 #%% Plot
