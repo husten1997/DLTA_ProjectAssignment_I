@@ -8,6 +8,7 @@ import ta
 import seaborn as sb
 from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
+import keras_tuner as kt
 
 class Advanced_Model():
 
@@ -59,7 +60,7 @@ class Advanced_Model():
         self.mergeFeatureSets()
         self.setTop20FeatureVariables()
 
-    def applyModel(self, fnn, active_func, neurons_first, dropout_first, neurons_second, dropout_second, epochs):
+    def applyModel(self, fnn, active_func, neurons_first, dropout_first, neurons_second, dropout_second, epochs, method = "FNN"):
 
         tmp_df_training = self.mergeFinalFeatureSetAndTargetVariable()[0]
         tmp_df_test = self.mergeFinalFeatureSetAndTargetVariable()[1]
@@ -73,19 +74,26 @@ class Advanced_Model():
         x_train_ = self.scaling(x_train)
         x_test_ = self.scaling(x_test)
 
-        config = {'fnn': fnn,
-                  'active_func': active_func,
-                  'neurons_first_layer': neurons_first,
-                  'dropout_first_layer': dropout_first,
-                  'neurons_second_layer': neurons_second,
-                  'dropout_second_layer': dropout_second}
+        if method == "FNN":
+            config = {'fnn': fnn,
+                    'active_func': active_func,
+                    'neurons_first_layer': neurons_first,
+                    'dropout_first_layer': dropout_first,
+                    'neurons_second_layer': neurons_second,
+                    'dropout_second_layer': dropout_second}
 
-        self.adv_model = self.buildAdvModel(config, x_train_)
-        history = self.adv_model.fit(x_train_, self.y_train, epochs=epochs, validation_data=(x_test_, self.y_test))
-        plt.plot(history.history['loss'], label='training')
-        plt.plot(history.history['val_loss'], label='test')
-        plt.legend()
-        plt.show()
+            self.adv_model = self.buildAdvModel(config, x_train_)
+            history = self.adv_model.fit(x_train_, self.y_train, epochs=epochs, validation_data=(x_test_, self.y_test))
+            plt.plot(history.history['loss'], label='training')
+            plt.plot(history.history['val_loss'], label='test')
+            plt.legend()
+            plt.show()
+
+        elif method == "Tuner": # TODO: Tuner currently broken due to missing input shape
+            tuner = kt.RandomSearch(self.buildAdvModel_KerasTuner, objective='val_loss', max_trials=5)
+
+            tuner.search(x_train_, self.y_train, epochs = 10, validation_data=(x_test_, self.y_test), batch_size = 1024)
+            self.adv_model = tuner.get_best_models()[0]
 
         self.y_train_hat = self.adv_model.predict(x_train_).flatten()
         self.y_test_hat = self.adv_model.predict(x_test_).flatten()
@@ -401,6 +409,30 @@ class Advanced_Model():
         model.compile(loss='mean_absolute_error', optimizer='adam')
         model.summary()
 
+        return model
+
+    def buildAdvModel_KerasTuner(self, hp):
+        model = tf.keras.Sequential()
+
+        # TODO: Find a way to get the input_shape without using the x_train_ parameter from above
+        input_shape = 10 # Would be x_train_.shape[1], but we dont have parameters with the Keras_tuner (or do we?)
+        model.add(tf.keras.layers.InputLayer(input_shape=(input_shape)))
+
+        model.add(tf.keras.layers.Dense(hp.Choice('neurons_first_layer', [60, 120, 240]), activation = hp.Choice('active_func_L1', ["relu", "tanh", "linear", "sigmoid"])))
+        
+        if hp.Boolean("dropout_L1"):
+            model.add(tf.keras.layers.Dropout(hp.Choice('dropout_first_layer', [0.125, 0.25])))
+        
+        model.add(tf.keras.layers.Dense(hp.Choice('neurons_second_layer', [60, 120, 240]), activation = hp.Choice('active_func_L2', ["relu", "tanh", "linear", "sigmoid"]) ))
+
+        if hp.Boolean("dropout_L2"):
+            model.add(tf.keras.layers.Dropout(hp.Choice('dropout_second_layer', [0.125, 0.25]))) 
+        
+        model.add(tf.keras.layers.Dense(1))
+
+        learning_rate = hp.Float("lr", min_value=1e-4, max_value=1e-2, sampling="log")
+
+        model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate))
         return model
 
     def showFeatureImportance(self, x_train_, x_train, y_train):
