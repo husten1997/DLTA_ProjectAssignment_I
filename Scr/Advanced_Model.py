@@ -156,18 +156,60 @@ class Advanced_Model():
         self.featureSet_test = tech_indicators_test.join(market_movements_autoencoder_test)
         self.featureSet_eval = tech_indicators_eval
 
+    def NonLinImportance(self):
+    #ToDo: nur **2 und **3 und dann joinen + für test und eval
+        indices = []
+
+        for variable in self.featureSet_training.columns:
+            for poly in range(1,4):
+                index = f"{variable}_{poly}"
+                indices.append(index)
+
+        corr_matrix = pd.DataFrame(columns = indices, index = self.featureSet_training.index)
+
+        for variable in self.featureSet_training.columns:
+            for poly in range(1,4):
+                corr_matrix[f"{variable}_{poly}"] = self.featureSet_training[f"{variable}"].values**poly
+
+        coin_find_corr_features = corr_matrix.corr(method = 'spearman')['Target_1'].abs().sort_values(ascending = False)
+
+        self.nlin_featureselection = list((coin_find_corr_features > 0.03).index)
+
+    def stationarity_transformation(self):
+        for variable in self.featureSet_training.columns:
+            timeseries = self.featureSet_training[variable]
+            result = adfuller(timeseries)
+            p_value = result[1]
+            if p_value < 0.05:
+                self.featureSet_training[variable] = self.featureSet_training[variable].pct_change()
+
+        for variable in self.featureSet_test.columns:
+            timeseries = self.featureSet_training[variable]
+            result = adfuller(timeseries)
+            p_value = result[1]
+            if p_value < 0.05:
+                self.featureSet_test[variable] = self.featureSet_test[variable].pct_change()
+
+        for variable in self.featureSet_eval.columns:
+            timeseries = self.featureSet_eval[variable]
+            result = adfuller(timeseries)
+            p_value = result[1]
+            if p_value < 0.05:
+                self.featureSet_eval[variable] = self.featureSet_eval[variable].pct_change()
+
+
     def setTop20FeatureVariables(self):
 
-        tmp_df_training = self.mergeFinalFeatureSetAndTargetVariable()[0]
+            tmp_df_training = self.mergeFinalFeatureSetAndTargetVariable()[0]
 
-        find_corr_features = tmp_df_training.corr(method='spearman')['Target'].abs().sort_values(ascending=False)
+            find_corr_features = tmp_df_training.corr(method='spearman')['Target'].abs().sort_values(ascending=False)
 
-        print('20 feature variables of [' +
-              self.coin_name +
-              '], that correlate highest with the target variable: \n' +
-              str(find_corr_features[1:21]))
+            print('20 feature variables of [' +
+                  self.coin_name +
+                  '], that correlate highest with the target variable: \n' +
+                  str(find_corr_features[1:21]))
 
-        self.top_20_features = list(find_corr_features[:21].index)
+            self.top_20_features = list(find_corr_features[:21].index)
 
     def calculateTechnicalIndicators(self):
 
