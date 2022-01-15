@@ -53,7 +53,7 @@ class Advanced_Model():
 
     def setupData(self):
 
-        self.all_data.sort_values('timestamp', inplace=True)
+        self.all_data.set_index('timestamp', inplace=True)
 
         self.data.set_index('timestamp', inplace=True)
         self.data = self.data.reindex(range(self.data.index[0], self.data.index[-1] + 60, 60), method='pad')
@@ -74,7 +74,7 @@ class Advanced_Model():
         #TODO: check that the order of the methods is correct
         self.mergeFeatureSets()
         self.stationarity_transformation()
-        self.NonLinImportance()
+        self.nonlin_transform()
 
     def applyModel(self, fnn, active_func, neurons_first, dropout_first, neurons_second, dropout_second, epochs, method = "FNN"):
 
@@ -170,23 +170,35 @@ class Advanced_Model():
         self.featureSet_test = tech_indicators_test.join(market_movements_autoencoder_test, how='inner')
         #self.featureSet_eval = tech_indicators_eval
 
-    #TODO: Methode so ändern, dass featureSet_training und featureSet_test ebenfalls die Polynome enthalten
-    def NonLinImportance(self):
+    #TODO: Methode so ändern, dass featureSet_training und featureSet_test ebenfalls die Polynome enthalten -> done (FD)
+    def nonlin_transform(self):
 
         indices = []
 
         for variable in self.featureSet_training.columns:
-            for poly in range(1,3):
+            for poly in range(2,3):
                 index = f"{variable}_{poly}"
                 indices.append(index)
 
-        corr_matrix = pd.DataFrame(columns = indices, index = self.featureSet_training.index)
-        corr_matrix = self.target_variable_training.join(corr_matrix, how='inner')
-
         for variable in self.featureSet_training.columns:
-            for poly in range(1,3):
-                corr_matrix[f"{variable}_{poly}"] = self.featureSet_training[f"{variable}"].values**poly
+            for poly in range(2,3):
+                #nonlintransformation of training data
+                featureSet_training[f"{variable}_{poly}"] = self.featureSet_training[f"{variable}"].values**poly
 
+                #nonlintransformation of test data
+                featureSet_test[f"{variable}_{poly}"] = self.featureSet_test[f"{variable}"].values**poly
+
+                #nonlintransformation of evalution data
+                featureSet_eval[f"{variable}_{poly}"] = self.featureSet_eval[f"{variable}"].values**poly
+
+        #attach target for corrlist creation
+        coin_data = self.all_data[data_training_all.Asset_ID == 4]
+        coin_target = coin_data["Target"]
+
+        #tempory dataset
+        corr_matrix = featureSet_training.merge(coin_target, how = "inner")
+
+        #filter relevant features
         coin_find_corr_features = corr_matrix.corr(method = 'spearman')['Target'].abs().sort_values(ascending = False)
 
         self.top_features = list((coin_find_corr_features > 0.03).index)
@@ -207,6 +219,10 @@ class Advanced_Model():
     """""
 
     def stationarity_transformation(self):
+        self.featureSet_training.dropna(inplace = True)
+        self.featureSet_test.dropna(inplace = True)
+        #self.featureSet_eval.dropna(inplace = True)
+
         for variable in self.featureSet_training.columns:
             timeseries = self.featureSet_training[variable]
             result = adfuller(timeseries)
@@ -331,10 +347,10 @@ class Advanced_Model():
         variables = ["Close", "Open", "High", "Low", "Volume"]
 
         #create pivot table for training data
-        data_pivot_train = self.all_data_training.pivot_table(index=self.all_data_training.timestamp, columns = 'Asset_ID')
+        data_pivot_train = self.all_data_training.pivot_table(index=self.all_data_training.index, columns = 'Asset_ID')
 
         #create pivot table for testing data
-        data_pivot_test = self.all_data_test.pivot_table(index=self.all_data_test.timestamp, columns = 'Asset_ID')
+        data_pivot_test = self.all_data_test.pivot_table(index=self.all_data_test.index, columns = 'Asset_ID')
 
         X_scaler = MinMaxScaler()
 
