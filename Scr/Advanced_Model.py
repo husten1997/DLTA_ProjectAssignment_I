@@ -13,12 +13,16 @@ from statsmodels.tsa.stattools import adfuller
 
 class Advanced_Model():
 
-    #coin_id = 0
+    #Initialize class variables
+    coin_id = 0
     coin_name = ''
 
     all_data = pd.DataFrame()
-    data = pd.DataFrame()
+    all_data_training = pd.DataFrame()
+    all_data_test = pd.DataFrame()
+    all_data_eval = pd.DataFrame()
 
+    data = pd.DataFrame()
     data_training = pd.DataFrame()
     data_test = pd.DataFrame()
     data_eval = pd.DataFrame()
@@ -26,8 +30,9 @@ class Advanced_Model():
     featureSet_training = pd.DataFrame()
     featureSet_test = pd.DataFrame()
     featureSet_eval = pd.DataFrame()
-    top_20_features = []
+    top_features = []
 
+    x_train_ = []
     y_train = []
     y_test = []
     y_train_hat = []
@@ -48,31 +53,42 @@ class Advanced_Model():
 
     def setupData(self):
 
+        self.all_data.sort_values('timestamp', inplace=True)
+
         self.data.set_index('timestamp', inplace=True)
         self.data = self.data.reindex(range(self.data.index[0], self.data.index[-1] + 60, 60), method='pad')
         self.data.sort_index(inplace=True)
 
         training_start, test_start, eval_start = self.getPeriods()
 
+        #This step ist necessary for the calculation of the technical market indicators
+        self.all_data_training = self.all_data[(self.all_data.index >= training_start) & (self.all_data.index <= test_start)]
+        self.all_data_test = self.all_data[(self.all_data.index >= test_start) & (self.all_data.index <= eval_start)]
+        self.all_data_eval = self.all_data[(self.all_data.index >= eval_start)]
+
+        #This step is necessary for the calculation of all further feature variables
         self.data_training = self.data[(self.data.index >= training_start) & (self.data.index <= test_start)]
         self.data_test = self.data[(self.data.index >= test_start) & (self.data.index <= eval_start)]
         self.data_eval = self.data[(self.data.index >= eval_start)]
 
+        #TODO: check that the order of the methods is correct
         self.mergeFeatureSets()
-        self.setTop20FeatureVariables()
+        self.stationarity_transformation()
+        self.NonLinImportance()
 
     def applyModel(self, fnn, active_func, neurons_first, dropout_first, neurons_second, dropout_second, epochs, method = "FNN"):
 
         tmp_df_training = self.mergeFinalFeatureSetAndTargetVariable()[0]
         tmp_df_test = self.mergeFinalFeatureSetAndTargetVariable()[1]
 
-        x_train = tmp_df_training[self.top_20_features].drop(['Target'], axis=1)
-        x_test = tmp_df_test[self.top_20_features].drop(['Target'], axis=1)
+        x_train = tmp_df_training[self.top_features].drop(['Target'], axis=1)
+        x_test = tmp_df_test[self.top_features].drop(['Target'], axis=1)
 
         self.y_train = tmp_df_training['Target'].values
         self.y_test = tmp_df_test['Target'].values
 
-        x_train_ = self.scaling(x_train)
+        #Variable x_train_ is also used in method buildAdvModel_KerasTuner(), therefore we have to declare it as class variable
+        self.x_train_ = self.scaling(x_train)
         x_test_ = self.scaling(x_test)
 
         if method == "FNN":
@@ -83,8 +99,8 @@ class Advanced_Model():
                     'neurons_second_layer': neurons_second,
                     'dropout_second_layer': dropout_second}
 
-            self.adv_model = self.buildAdvModel(config, x_train_)
-            history = self.adv_model.fit(x_train_, self.y_train, epochs=epochs, validation_data=(x_test_, self.y_test))
+            self.adv_model = self.buildAdvModel(config)
+            history = self.adv_model.fit(self.x_train_, self.y_train, epochs=epochs, validation_data=(x_test_, self.y_test))
             plt.plot(history.history['loss'], label='training')
             plt.plot(history.history['val_loss'], label='test')
             plt.legend()
@@ -93,14 +109,14 @@ class Advanced_Model():
         elif method == "Tuner": # TODO: Tuner currently broken due to missing input shape
             tuner = kt.RandomSearch(self.buildAdvModel_KerasTuner, objective='val_loss', max_trials=5)
 
-            tuner.search(x_train_, self.y_train, epochs = 10, validation_data=(x_test_, self.y_test), batch_size = 1024)
+            tuner.search(self.x_train_, self.y_train, epochs = 10, validation_data=(x_test_, self.y_test), batch_size = 1024)
             self.adv_model = tuner.get_best_models()[0]
 
-        self.y_train_hat = self.adv_model.predict(x_train_).flatten()
+        self.y_train_hat = self.adv_model.predict(self.x_train_).flatten()
         self.y_test_hat = self.adv_model.predict(x_test_).flatten()
 
         #Show Feature Importance after estimation of the model
-        self.showFeatureImportance(x_train_, x_train, self.y_train)
+        self.showFeatureImportance(x_train, self.y_train)
 
     #Help function to get test, training & evaluation period (see setupData() function above)
     def getPeriods(self):
@@ -145,35 +161,50 @@ class Advanced_Model():
     def mergeFeatureSets(self):
 
         #Get various feature sets
-        market_movements_autoencoder_train, market_movements_autoencoder_test = self.market_indicators()
+        market_movements_autoencoder_train, market_movements_autoencoder_test = self.calculateTechnicalMarketIndicators()
         tech_indicators_training, tech_indicators_test, tech_indicators_eval = self.calculateTechnicalIndicators()
-        #TODO: calculate further feature sets, e.g. market variables..
+        #TODO: calculate further feature sets, e.g. further basic variables, exotic variables such as twitter hashtags and so on..
 
-        #TODO: merge different feature sets to one final feature set (using pd.merge() function)..
+        #Merge different feature sets to one final feature set for each period
+        self.featureSet_training = tech_indicators_training.join(market_movements_autoencoder_train, how='inner')
+        self.featureSet_test = tech_indicators_test.join(market_movements_autoencoder_test, how='inner')
+        #self.featureSet_eval = tech_indicators_eval
 
-        #Only temporary code (see TODO's)
-        self.featureSet_training = tech_indicators_training.join(market_movements_autoencoder_train)
-        self.featureSet_test = tech_indicators_test.join(market_movements_autoencoder_test)
-        self.featureSet_eval = tech_indicators_eval
-
+    #TODO: Methode so ändern, dass featureSet_training und featureSet_test ebenfalls die Polynome enthalten
     def NonLinImportance(self):
-    #ToDo: nur **2 und **3 und dann joinen + für test und eval
+
         indices = []
 
         for variable in self.featureSet_training.columns:
-            for poly in range(1,4):
+            for poly in range(1,3):
                 index = f"{variable}_{poly}"
                 indices.append(index)
 
         corr_matrix = pd.DataFrame(columns = indices, index = self.featureSet_training.index)
+        corr_matrix = self.target_variable_training.join(corr_matrix, how='inner')
 
         for variable in self.featureSet_training.columns:
-            for poly in range(1,4):
+            for poly in range(1,3):
                 corr_matrix[f"{variable}_{poly}"] = self.featureSet_training[f"{variable}"].values**poly
 
-        coin_find_corr_features = corr_matrix.corr(method = 'spearman')['Target_1'].abs().sort_values(ascending = False)
+        coin_find_corr_features = corr_matrix.corr(method = 'spearman')['Target'].abs().sort_values(ascending = False)
 
-        self.nlin_featureselection = list((coin_find_corr_features > 0.03).index)
+        self.top_features = list((coin_find_corr_features > 0.03).index)
+
+    """""
+    def setTop20FeatureVariables(self):
+
+            tmp_df_training = self.mergeFinalFeatureSetAndTargetVariable()[0]
+
+            find_corr_features = tmp_df_training.corr(method='spearman')['Target'].abs().sort_values(ascending=False)
+
+            print('20 feature variables of [' +
+                  self.coin_name +
+                  '], that correlate highest with the target variable: \n' +
+                  str(find_corr_features[1:21]))
+
+            self.top_20_features = list(find_corr_features[:21].index)
+    """""
 
     def stationarity_transformation(self):
         for variable in self.featureSet_training.columns:
@@ -189,27 +220,14 @@ class Advanced_Model():
             p_value = result[1]
             if p_value < 0.05:
                 self.featureSet_test[variable] = self.featureSet_test[variable].pct_change()
-
+        """""
         for variable in self.featureSet_eval.columns:
             timeseries = self.featureSet_eval[variable]
             result = adfuller(timeseries)
             p_value = result[1]
             if p_value < 0.05:
                 self.featureSet_eval[variable] = self.featureSet_eval[variable].pct_change()
-
-
-    def setTop20FeatureVariables(self):
-
-            tmp_df_training = self.mergeFinalFeatureSetAndTargetVariable()[0]
-
-            find_corr_features = tmp_df_training.corr(method='spearman')['Target'].abs().sort_values(ascending=False)
-
-            print('20 feature variables of [' +
-                  self.coin_name +
-                  '], that correlate highest with the target variable: \n' +
-                  str(find_corr_features[1:21]))
-
-            self.top_20_features = list(find_corr_features[:21].index)
+        """""
 
     def calculateTechnicalIndicators(self):
 
@@ -307,25 +325,16 @@ class Advanced_Model():
 
         return tmp_df_training, tmp_df_test, tmp_df_eval
 
+    def calculateTechnicalMarketIndicators(self):
 
-    def market_indicators(self):
-
-        self.all_data.set_index('timestamp', inplace=True)
-        #all_data = all_data.reindex(range(all_data.index[0], all_data.index[-1] + 60, 60), method='pad')
-        #all_data.sort_index(inplace=True)
-
-        training_start, test_start, eval_start = self.getPeriods()
-
-        data_training_all = self.all_data[(self.all_data.index >= training_start) & (self.all_data.index <= test_start)]
-        data_test_all = self.all_data[(self.all_data.index >= test_start) & (self.all_data.index <= eval_start)]
         #variable names
         variables = ["Close", "Open", "High", "Low", "Volume"]
 
         #create pivot table for training data
-        data_pivot_train = data_training_all.pivot_table(index = data_training_all.index, columns = 'Asset_ID')
+        data_pivot_train = self.all_data_training.pivot_table(index=self.all_data_training.timestamp, columns = 'Asset_ID')
 
         #create pivot table for testing data
-        data_pivot_test = data_test_all.pivot_table(index = data_test_all.index, columns = 'Asset_ID')
+        data_pivot_test = self.all_data_test.pivot_table(index=self.all_data_test.timestamp, columns = 'Asset_ID')
 
         X_scaler = MinMaxScaler()
 
@@ -393,7 +402,7 @@ class Advanced_Model():
             autoencoder.fit(globals()[str(variable) + "_data_test_"], globals()[str(variable) + "_data_test_"], epochs = 5, batch_size = 100)
             globals()[str(variable) + "_ae_test"] = encoder.predict(globals()[str(variable) + "_data_test_"]).flatten()
 
-            #create dataframe
+        #create dataframe
         market_movements_autoencoder_test = pd.DataFrame(columns = [f"{variable}_market" for variable in variables], index = globals()[str(variable) + "_data_test_"].index)
 
         #fill dataframe
@@ -415,31 +424,30 @@ class Advanced_Model():
 
         return market_movements_autoencoder_train, market_movements_autoencoder_test
 
-
     def mergeFinalFeatureSetAndTargetVariable(self):
 
         target_variable_training, target_variable_test, target_variable_eval = self.getTargetVariable()
 
         #Inner join
-        tmp_df_training = pd.merge(target_variable_training, self.featureSet_training, left_index=True, right_index=True)
-        tmp_df_test = pd.merge(target_variable_test, self.featureSet_test, left_index=True, right_index=True)
-        tmp_df_eval = pd.merge(target_variable_eval, self.featureSet_eval, left_index=True, right_index=True)
+        tmp_df_training = target_variable_training.join(self.featureSet_training, how='inner')
+        tmp_df_test = target_variable_test.join(self.featureSet_test, how='inner')
+        #tmp_df_eval = target_variable_eval.join(self.featureSet_eval, how='inner')
 
         tmp_df_training.dropna(inplace=True)
         tmp_df_test.dropna(inplace=True)
-        tmp_df_eval.dropna(inplace=True)
+        #tmp_df_eval.dropna(inplace=True)
 
-        return tmp_df_training, tmp_df_test, tmp_df_eval
+        return tmp_df_training, tmp_df_test#, tmp_df_eval
 
     def getTargetVariable(self):
 
         return self.data_training['Target'], self.data_test['Target'], self.data_eval['Target']
 
-    def buildAdvModel(self, config, x_train_):
+    def buildAdvModel(self, config):
 
         if config['fnn']:
             model = tf.keras.Sequential([
-                tf.keras.layers.InputLayer(input_shape=(x_train_.shape[1])),
+                tf.keras.layers.InputLayer(input_shape=(self.x_train_.shape[1])),
                 tf.keras.layers.Dense(config['neurons_first_layer'], activation=config['active_func']),
                 tf.keras.layers.Dropout(config['dropout_first_layer']),
                 tf.keras.layers.Dense(config['neurons_second_layer'], activation=config['active_func']),
@@ -457,7 +465,7 @@ class Advanced_Model():
     def buildAdvModel_KerasTuner(self, hp):
         model = tf.keras.Sequential()
 
-        # TODO: Find a way to get the input_shape without using the x_train_ parameter from above
+        # TODO: Find a way to get the input_shape without using the x_train_ parameter from above -> update: x_train_ is now a class variable
         input_shape = 10 # Would be x_train_.shape[1], but we dont have parameters with the Keras_tuner (or do we?)
         model.add(tf.keras.layers.InputLayer(input_shape=(input_shape)))
 
@@ -478,9 +486,9 @@ class Advanced_Model():
         model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate))
         return model
 
-    def showFeatureImportance(self, x_train_, x_train, y_train):
+    def showFeatureImportance(self, x_train, y_train):
 
-        x = tf.Variable(x_train_)
+        x = tf.Variable(self.x_train_)
         y = tf.Variable(y_train)
         with tf.GradientTape() as tape:
             tape.watch(x)
@@ -520,13 +528,15 @@ class Advanced_Model():
 
         return self.mergeFinalFeatureSetAndTargetVariable()[1]
 
+    """""
     def getFinalDataFrameEval(self):
 
         return self.mergeFinalFeatureSetAndTargetVariable()[2]
+    """""
 
     def getTop20FeatureVariables(self):
 
-        return self.top_20_features
+        return self.top_features
 
     def getFittedData(self):
 
