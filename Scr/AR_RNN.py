@@ -98,11 +98,11 @@ test_data.dropna(inplace = True)
 train_data_features = train_data.drop(['Asset_ID','Time','Weight','Asset_Name'], axis = 1)
 test_data_features = test_data.drop(['Asset_ID','Time','Weight','Asset_Name'], axis = 1)
 
-#price_train = train_data_features['Close'].values
-#price_test = test_data_features['Close'].values
+price_train = train_data_features['Close'].values
+price_test = test_data_features['Close'].values
 
-price_train = train_data_features['Target'].values
-price_test = test_data_features['Target'].values
+#price_train = train_data_features['Target'].values
+#price_test = test_data_features['Target'].values
 
 test_data_features = None
 train_data_features = None
@@ -345,24 +345,6 @@ model = tf.keras.Sequential([
 model.compile(loss = 'mean_squared_error', optimizer = 'adam')
 model.summary()
 
-#%%
-import tensorflow as tf
-# define a recurrent network with Gated Recurrent Units
-model = tf.keras.Sequential([
-    #tf.keras.layers.InputLayer(input_shape = (ar_order, 1)),
-    tf.keras.layers.InputLayer(input_shape = (1)),
-    tf.keras.layers.RepeatVector(60),
-    #tf.keras.layers.Dense(60, activation = 'linear', input_shape = [ar_order], use_bias = False),
-    #tf.keras.layers.GRU(5),
-    tf.keras.layers.LSTM(120, return_sequences = False)
-    #tf.keras.layers.GRU(60)
-    ,tf.keras.layers.Dense(1)
-])
-
-model.compile(loss = 'mean_squared_error', optimizer = 'adam')
-model.summary()
-
-
 #%% Reshape Data
 
 X_data_train_red = np.reshape(X_data_train_red, X_data_train_red.shape + (1,))
@@ -382,9 +364,6 @@ ARRNN_history = model.fit(X_data_train_red, Y_data_train, epochs = 20, validatio
 price_train_ = price_train_[(len(price_train_) % 60) : ]
 price_train_.reshape(-1, 60).mean(axis = 1).reshape(-1, 1)
 
-#%%
-ARRNN_history = model.fit(price_train_[:-1], price_train_[1:], epochs = 20, validation_data = (price_test_[:-1], price_test_[1:]), batch_size=1024)
-
 #%% History Plot
 import matplotlib.pylab as plt
 
@@ -398,24 +377,7 @@ plt.show()
 Y_train_hat = model.predict(X_data_train_red)
 Y_test_hat = model.predict(X_data_test_red)
 
-#%% Model performance
-Y_train_hat = model.predict(price_train_[:-1])
-Y_test_hat = model.predict(price_test_[:-1])
 
-#%% Test
-from scipy.stats.stats import pearsonr
-
-var = lambda x: (1/(len(x)-1)) * (np.sum(x * x) - (1/len(x)) * (np.sum(x)**2))
-cov = lambda x, y: (1/(len(x)-1)) * (np.sum(x * y) - (1/len(x)) * np.sum(x) * np.sum(y))
-corr = lambda x, y: (cov(x, y))/np.sqrt(var(x) * var(y))
-
-#%%
-print("In-sample corr: " + str(corr(Y_train_hat.reshape((-1)), Y_data_train.reshape((-1)))))
-print("Out-of-sample corr: " + str(corr(Y_test_hat.reshape((-1)), Y_data_test.reshape((-1)))))
-
-#%%
-print("In-sample corr: " + str(corr(Y_train_hat.reshape((-1)), price_train_[1:].reshape((-1)))))
-print("Out-of-sample corr: " + str(corr(Y_test_hat.reshape((-1)), price_test_[1:].reshape((-1)))))
 
 
 #%% Plot

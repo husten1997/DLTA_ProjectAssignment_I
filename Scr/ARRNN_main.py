@@ -6,7 +6,7 @@ from Scr.functions import performanceEval
 data = import_data("Data/")
 
 #%%
-ARRNN_mod = AR_RNN_model(data, arOrder = 15, forecastSteps = 15, coinID = 4, dimRedMethod = 'None')
+ARRNN_mod = AR_RNN_model(data, arOrder = 60 * 4, forecastSteps = 15, coinID = 4, dimRedMethod = 'RandomForest')
 
 #%%
 ARRNN_mod.setARRNN_model(method = "Config")

@@ -1,11 +1,13 @@
 import numpy as np
+import pandas as pd
 
 
 class AR_RNN_model:
     def __init__(self, data, arOrder, forecastSteps, coinID, dimRedMethod):
         self.dimRedMethod_dic = {   'Average': 'Average',
                                     'Autoencoder': 'Autoencoder',
-                                    'RNNAutoencoder': 'RNNAutoencoder'}
+                                    'RNNAutoencoder': 'RNNAutoencoder',
+                                    'RandomForest': 'RandomForest'}
 
         #TODO: Implement nonlinearity
         #TODO: Implement scaler
@@ -168,9 +170,33 @@ class AR_RNN_model:
 
         return X_featuresTrain, X_featuresTest, Y_featuresTrain, Y_featuresTest
 
+    def featureSelectionRF(self, dataTrain, dataTest):
+        from sklearn.ensemble import RandomForestRegressor
+        from sklearn.feature_selection import SelectFromModel
+        from sklearn.feature_selection import RFECV
+        import matplotlib.pyplot as plt
+
+        rf_model = RandomForestRegressor(random_state = 0)
+        rf_model.fit(dataTrain, dataTest.flatten())
+        # sel = SelectFromModel(RandomForestClassifier(n_estimators = 100))
+        # sel.fit(dataTrain, dataTest)
+        features = range(0, dataTrain.shape[1])
+
+        f_i = list(zip(features, rf_model.feature_importances_))
+        f_i.sort(key=lambda x: x[1])
+        plt.barh([x[0] for x in f_i], [x[1] for x in f_i])
+
+        plt.show()
+
+        rfe = RFECV(rf_model, cv=5, scoring="neg_mean_squared_error")
+
+        rfe.fit(dataTrain, dataTest)
+
+        return rfe.get_support()
 
     def generateWeightMatrix(self, dimRedMethod, outputDim = None, dimRedRatio = None):
         import numpy as np
+        import pandas as pd
 
         weights = None
 
@@ -195,6 +221,19 @@ class AR_RNN_model:
             if self.Encoder is None or self.Decoder is None or self.Autoencoder is None:
                 X_featuresTrain, X_featuresTest =  self.generateFeatureSet()[:2]
                 self.setupRNNAutoencoder(trainData = X_featuresTrain, testData = X_featuresTest, outputDim = outputDim)
+
+        elif dimRedMethod == self.dimRedMethod_dic["RandomForest"]:
+            X_featuresTrain, X_featuresTest, Y_featuresTrain, Y_featuresTest = self.generateFeatureSet()
+
+            X_featuresTrain = pd.DataFrame(X_featuresTrain)
+            #Y_featuresTrain = pd.DataFrame(Y_featuresTrain)
+
+            print("Started fitting RF")
+            colIsSelected = self.featureSelectionRF(X_featuresTrain, Y_featuresTrain)
+
+            # change the boolean vector colIsSelected to my weights matrix sheme
+            colIsSelected_vec = np.array(colIsSelected * 1).reshape(-1, 1)
+            weights = np.matmul(colIsSelected_vec, np.ones(sum(colIsSelected_vec)).reshape(1, -1))
 
 
         elif dimRedMethod == self.dimRedMethod_dic["Average"]:
