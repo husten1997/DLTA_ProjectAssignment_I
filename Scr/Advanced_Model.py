@@ -231,7 +231,7 @@ class Advanced_Model():
                 self.featureSet_training[variable] = self.featureSet_training[variable].pct_change()
 
         for variable in self.featureSet_test.columns:
-            timeseries = self.featureSet_training[variable]
+            timeseries = self.featureSet_test[variable]
             result = adfuller(timeseries)
             p_value = result[1]
             if p_value < 0.05:
