@@ -33,15 +33,15 @@ def import_data(dir):
 
     return all_data, all_data_details
 
-def createHeatMapTop20FeatureVariables(coin_name, df_training, df_test, top_20_features):
+def createHeatMapTopFeatureVariables(coin_name, df_training, df_test, top_features):
 
     fig, axs = plt.subplots(1, 2, figsize=(20, 10))
     fig.suptitle(coin_name, fontsize=20)
     axs[0].set_title('Training Data')
     axs[1].set_title('Test Data')
 
-    sb.heatmap(df_training[top_20_features].corr(method='spearman').abs(), ax=axs[0])
-    sb.heatmap(df_test[top_20_features].corr(method='spearman').abs(), ax=axs[1])
+    sb.heatmap(df_training[top_features].corr(method='spearman').abs(), ax=axs[0])
+    sb.heatmap(df_test[top_features].corr(method='spearman').abs(), ax=axs[1])
     plt.show()
 
 def performanceEval(Y, Y_hat):

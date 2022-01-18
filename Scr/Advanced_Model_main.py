@@ -1,23 +1,23 @@
 from Scr.Advanced_Model import Advanced_Model
 from Scr.functions import import_data
-from Scr.functions import createHeatMapTop20FeatureVariables
+from Scr.functions import createHeatMapTopFeatureVariables
 from Scr.functions import performanceEval
 
 #Import whole dataset
-all_data, all_data_details = import_data("C:/Users/Fabia/pythoninput/DLTA/Data")
-#Define one coin that should be analysed / predicted with his ID
-coin_id = 4
+all_data, all_data_details = import_data("C:/Users/Albert Nietz/PyCharm_Projects/DLTA, First Project Assignment/DLTA_ProjectAssignment_I/Data")
+#Define one coin that should be analysed / predicted with his ID => Currently: Ethereum
+coin_id = 6
 
 #Create an instance of advanced model
 advanced_model = Advanced_Model(coin_id, all_data, all_data_details)
 
-#Create heat map of the top 20 feature variables
+#Create heat map of the top feature variables
 coin_name = advanced_model.getCoinName()
 finalDataframe_training = advanced_model.getFinalDataframeTraining()
 finalDataFrame_test = advanced_model.getFinalDataframeTest()
-top_20_features = advanced_model.getTop20FeatureVariables()
+top_features = advanced_model.getTopFeatureVariables()
 
-createHeatMapTop20FeatureVariables(coin_name, finalDataframe_training, finalDataFrame_test, top_20_features)
+createHeatMapTopFeatureVariables(coin_name, finalDataframe_training, finalDataFrame_test, top_features)
 
 #Apply / set advanced model
 advanced_model.applyModel(True, 'selu', 20, 0.50, 10, 0.25, 5)
