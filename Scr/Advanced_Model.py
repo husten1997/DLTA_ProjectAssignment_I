@@ -224,8 +224,10 @@ class Advanced_Model():
         x_test_ = self.scaling(x_test)
 
         if method == "FNN":
-            config = {'fnn': fnn,
-                    'active_func': active_func,
+            config = {"GRU": GRU,
+                      "LSTM": LSTM,
+                    'actfun_first_layer': "tanh",
+                    "actun_second_layer": "tanh",
                     'neurons_first_layer': neurons_first,
                     'dropout_first_layer': dropout_first,
                     'neurons_second_layer': neurons_second,
@@ -253,17 +255,26 @@ class Advanced_Model():
     def buildAdvModel(self, config):
 
         # TODO: Implement GRU or LSTM instead of FNN
-        if config['fnn']:
+        if config['GRU']:
             model = tf.keras.Sequential([
                 tf.keras.layers.InputLayer(input_shape=(self.x_train_.shape[1])),
-                tf.keras.layers.Dense(config['neurons_first_layer'], activation=config['active_func']),
+                tf.keras.layers.RepeatVector(15),
+                tf.keras.layers.GRU(config['neurons_first_layer'], return_sequences = True, activation = config["actfun first layer"]),
                 tf.keras.layers.Dropout(config['dropout_first_layer']),
-                tf.keras.layers.Dense(config['neurons_second_layer'], activation=config['active_func']),
-                tf.keras.layers.Dropout(config['dropout_second_layer']),
+                tf.keras.layers.GRU(config['neurons_second_layer'], return_sequences = False, activation = config["actfun second layer"]),
+                tf.keras.layers.Dense(1)
+            ])
+        if config["LSTM"]:
+            model = tf.keras.Sequential([
+                tf.keras.layers.InputLayer(input_shape=(self.x_train_.shape[1])),
+                tf.keras.layers.RepeatVector(15),
+                tf.keras.layers.LSTM(config['neurons_first_layer'], return_sequences = True, activation = config["actfun first layer"]),
+                tf.keras.layers.Dropout(config['dropout_first_layer']),
+                tf.keras.layers.LSTM(config['neurons_second_layer'], return_sequences = False, activation = config["actfun second layer"]),
                 tf.keras.layers.Dense(1)
             ])
         else:
-            print('A other neural network than the Forward Neural Network is currently not defined')
+            print('A other neural network than the GRU is currently not defined')
 
         model.compile(loss='mean_absolute_error', optimizer='adam')
         model.summary()

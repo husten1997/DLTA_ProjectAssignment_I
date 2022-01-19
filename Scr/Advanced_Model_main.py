@@ -4,7 +4,7 @@ from Scr.functions import createHeatMapTopFeatureVariables
 from Scr.functions import performanceEval
 
 #Import whole dataset
-all_data, all_data_details = import_data("C:/Users/Albert Nietz/PyCharm_Projects/DLTA, First Project Assignment/DLTA_ProjectAssignment_I/Data")
+all_data, all_data_details = import_data("C:/Users/Fabia/pythoninput/DLTA/Data/")
 #Define one coin that should be analysed / predicted with his ID => Currently: Ethereum
 coin_id = 6
 
