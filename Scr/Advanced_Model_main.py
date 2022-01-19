@@ -4,7 +4,7 @@ from Scr.functions import createHeatMapTopFeatureVariables
 from Scr.functions import performanceEval
 
 #Import whole dataset
-all_data, all_data_details = import_data("C:/Users/Fabia/pythoninput/DLTA/Data/")
+all_data, all_data_details = import_data("Data")
 #Define one coin that should be analysed / predicted with his ID => Currently: Ethereum
 coin_id = 6
 
@@ -20,14 +20,14 @@ top_features = advanced_model.getTopFeatureVariables()
 createHeatMapTopFeatureVariables(coin_name, finalDataframe_training, finalDataFrame_test, top_features)
 
 #Apply / set advanced model
-advanced_model.applyModel(True, 'selu', 20, 0.50, 10, 0.25, 5)
+advanced_model.applyModel(20)
 
 #Conduct performance evaluation
 y_train, y_test = advanced_model.getRealData()
 y_train_hat, y_test_hat = advanced_model.getFittedData()
 
-print("In-sample corr: " + performanceEval(y_train, y_train_hat))
-print("Out-of-sample corr: " + performanceEval(y_test, y_test_hat))
+performanceEval(y_train, y_train_hat, "In-Sample ")
+performanceEval(y_test, y_test_hat, "Out-of-Sample ")
 
 
 

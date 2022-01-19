@@ -44,18 +44,63 @@ def createHeatMapTopFeatureVariables(coin_name, df_training, df_test, top_featur
     sb.heatmap(df_test[top_features].corr(method='spearman').abs(), ax=axs[1])
     plt.show()
 
-def performanceEval(Y, Y_hat):
+def performanceEval(Y, Y_hat, preFix = ""):
+    import numpy as np
+    import matplotlib.pyplot as plt
 
-    var = lambda x: (1 / (len(x) - 1)) * (np.sum(x * x) - (1 / len(x)) * (np.sum(x) ** 2))
-    cov = lambda x, y: (1 / (len(x) - 1)) * (np.sum(x * y) - (1 / len(x)) * np.sum(x) * np.sum(y))
-    corr = lambda x, y: (cov(x, y)) / np.sqrt(var(x) * var(y))
+    Y = np.array(Y)
+    Y_hat = np.array(Y_hat)
 
     u = Y.reshape((-1)) - Y_hat.reshape((-1))
 
+    print(preFix + " corr(Y, Y_hat): " + str(corr(Y, Y_hat)))
+    print(preFix + " Bias(u): " + str(Bias(Y, Y_hat)))
+    print(preFix + " Var(u): " + str(Var(Y, Y_hat)))
+    print(preFix + " MSE(u): " + str(MSE(Y, Y_hat)))
+
     plt.plot(u, label='Residuals')
+    plt.title(preFix + 'Residuals over time (u x t)')
     plt.legend()
     plt.show()
 
-    return str(corr(Y.reshape((-1)), Y_hat.reshape((-1))))
+    plt.plot(u, Y_hat, 'bo', label='Residuals')
+    plt.title(preFix + 'Residual Plot (u x y.hat)')
+    plt.legend()
+    plt.show()
 
+    #return str(corr)
+    #return str(corr(Y.reshape((-1)), Y_hat.reshape((-1))))
+
+def corr(Y, Y_hat):
+    import numpy as np
+
+    Y = np.array(Y).flatten()
+    Y_hat = np.array(Y_hat).flatten()
+
+    cov_matrix = np.cov(Y, Y_hat)
+
+    return cov_matrix[0, 1] / np.sqrt(cov_matrix[0, 0] * cov_matrix[1, 1])
+
+def Bias(Y, Y_hat):
+    import numpy as np
+
+    Y = np.array(Y).flatten()
+    Y_hat = np.array(Y_hat).flatten()
+
+    u = Y - Y_hat
+
+    return np.mean(u)
+
+def Var(Y, Y_hat):
+    import numpy as np
+
+    Y = np.array(Y).flatten()
+    Y_hat = np.array(Y_hat).flatten()
+
+    u = Y - Y_hat
+
+    return np.var(u)
+
+def MSE(Y, Y_hat):
+    return Bias(Y, Y_hat) + Var(Y, Y_hat)
 

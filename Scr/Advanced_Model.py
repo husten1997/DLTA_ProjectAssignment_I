@@ -208,7 +208,7 @@ class Advanced_Model():
 
     """""
 
-    def applyModel(self, fnn, active_func, neurons_first, dropout_first, neurons_second, dropout_second, epochs, method = "FNN"):
+    def applyModel(self, epochs, method = "Tuner"):
 
         tmp_df_training = self.mergeFinalFeatureSetAndTargetVariable()[0]
         tmp_df_test = self.mergeFinalFeatureSetAndTargetVariable()[1]
@@ -221,62 +221,89 @@ class Advanced_Model():
 
         #Variable x_train_ is also used in method buildAdvModel_KerasTuner(), therefore we have to declare it as class variable
         self.x_train_ = self.scaling(x_train)
-        x_test_ = self.scaling(x_test)
+        self.x_test_ = self.scaling(x_test)
 
         if method == "FNN":
-            config = {"GRU": GRU,
-                      "LSTM": LSTM,
-                    'actfun_first_layer': "tanh",
-                    "actun_second_layer": "tanh",
-                    'neurons_first_layer': neurons_first,
-                    'dropout_first_layer': dropout_first,
-                    'neurons_second_layer': neurons_second,
-                    'dropout_second_layer': dropout_second}
+            config = {
+                "RNN_Lookback": 15,
+                "GRU": True,
+                #GRU
+                "GRU_L1_units": 120,
+                "GRU_L1_actfun": "tanh",
+                "GRU_L1_dropoutBool": True,
+                "GRU_L1_dropoutUnit": 0.25,
+                "GRU_L2_units": 60,
+                "GRU_L2_actfun": "tanh",
+                "GRU_L2_dropoutBool": True,
+                "GRU_L2_dropoutUnit": 0.25,
+                #LSTM
+                "LSTM_L1_units": 120,
+                "LSTM_L1_actfun": "tanh",
+                "LSTM_L1_dropoutBool": True,
+                "LSTM_L1_dropoutUnit": 0.25,
+                "LSTM_L2_units": 60,
+                "LSTM_L2_actfun": "tanh",
+                "LSTM_L2_dropoutBool": True,
+                "LSTM_L2_dropoutUnit": 0.25,
+                "lr": 1e-2}
 
             self.adv_model = self.buildAdvModel(config)
-            history = self.adv_model.fit(self.x_train_, self.y_train, epochs=epochs, validation_data=(x_test_, self.y_test))
+
+            history = self.adv_model.fit(self.x_train_, self.y_train, epochs=epochs, validation_data=(self.x_test_, self.y_test), batch_size = 1024)
             plt.plot(history.history['loss'], label='training')
             plt.plot(history.history['val_loss'], label='test')
             plt.legend()
             plt.show()
 
         elif method == "Tuner": # TODO: Tuner currently broken due to missing input shape
-            tuner = kt.RandomSearch(self.buildAdvModel_KerasTuner, objective='val_loss', max_trials=5)
+            self.tuner = kt.RandomSearch(self.buildAdvModel_KerasTuner, objective='val_loss', max_trials=10)
 
-            tuner.search(self.x_train_, self.y_train, epochs = 10, validation_data=(x_test_, self.y_test), batch_size = 1024)
-            self.adv_model = tuner.get_best_models()[0]
+            self.tuner.search(self.x_train_, self.y_train, epochs = 10, validation_data=(self.x_test_, self.y_test), batch_size = 1024)
+            self.adv_model = self.tuner.get_best_models()[0]
+
+            history = self.adv_model.fit(self.x_train_, self.y_train, epochs=epochs, validation_data=(self.x_test_, self.y_test), batch_size = 1024)
+            plt.plot(history.history['loss'], label='training')
+            plt.plot(history.history['val_loss'], label='test')
+            plt.legend()
+            plt.show()
 
         self.y_train_hat = self.adv_model.predict(self.x_train_).flatten()
-        self.y_test_hat = self.adv_model.predict(x_test_).flatten()
+        self.y_test_hat = self.adv_model.predict(self.x_test_).flatten()
 
         #Show Feature Importance after estimation of the model
         self.showFeatureImportance(x_train, self.y_train)
 
     def buildAdvModel(self, config):
+        model = tf.keras.Sequential()
 
-        # TODO: Implement GRU or LSTM instead of FNN
+        input_shape = self.x_train_.shape[1]  # Would be x_train_.shape[1], but we dont have parameters with the Keras_tuner (or do we?)
+        model.add(tf.keras.layers.InputLayer(input_shape=(input_shape)))
+        
+        model.add(tf.keras.layers.RepeatVector(config["RNN_Lookback"]))
+        
         if config['GRU']:
-            model = tf.keras.Sequential([
-                tf.keras.layers.InputLayer(input_shape=(self.x_train_.shape[1])),
-                tf.keras.layers.RepeatVector(15),
-                tf.keras.layers.GRU(config['neurons_first_layer'], return_sequences = True, activation = config["actfun first layer"]),
-                tf.keras.layers.Dropout(config['dropout_first_layer']),
-                tf.keras.layers.GRU(config['neurons_second_layer'], return_sequences = False, activation = config["actfun second layer"]),
-                tf.keras.layers.Dense(1)
-            ])
-        if config["LSTM"]:
-            model = tf.keras.Sequential([
-                tf.keras.layers.InputLayer(input_shape=(self.x_train_.shape[1])),
-                tf.keras.layers.RepeatVector(15),
-                tf.keras.layers.LSTM(config['neurons_first_layer'], return_sequences = True, activation = config["actfun first layer"]),
-                tf.keras.layers.Dropout(config['dropout_first_layer']),
-                tf.keras.layers.LSTM(config['neurons_second_layer'], return_sequences = False, activation = config["actfun second layer"]),
-                tf.keras.layers.Dense(1)
-            ])
+            model.add(tf.keras.layers.GRU(config['GRU_L1_units'], return_sequences=True, activation=config["GRU_L1_actfun"]))
+            if config['GRU_L1_dropoutBool']:
+                model.add(tf.keras.layers.Dropout(config['GRU_L1_dropoutUnit']))
+            model.add(tf.keras.layers.GRU(config['GRU_L2_units'], return_sequences=False, activation=config["GRU_L2_actfun"]))
+            if config['GRU_L2_dropoutBool']:
+                model.add(tf.keras.layers.Dropout(config['GRU_L2_dropoutUnit']))
         else:
-            print('A other neural network than the GRU is currently not defined')
+            model.add(
+                tf.keras.layers.LSTM(config['LSTM_L1_units'], return_sequences=True, activation=config["LSTM_L1_actfun"]))
+            if config['LSTM_L1_dropoutBool']:
+                model.add(tf.keras.layers.Dropout(config['LSTM_L1_dropoutUnit']))
+            model.add(
+                tf.keras.layers.LSTM(config['LSTM_L2_units'], return_sequences=False, activation=config["LSTM_L2_actfun"]))
+            if config['LSTM_L2_dropoutBool']:
+                model.add(tf.keras.layers.Dropout(config['LSTM_L2_dropoutUnit']))
 
-        model.compile(loss='mean_absolute_error', optimizer='adam')
+        model.add(tf.keras.layers.Dense(1))
+
+        learning_rate = config["lr"]
+
+        model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate))
+
         model.summary()
 
         return model
@@ -284,27 +311,40 @@ class Advanced_Model():
     def buildAdvModel_KerasTuner(self, hp):
         model = tf.keras.Sequential()
 
-        # TODO: Find a way to get the input_shape without using the x_train_ parameter from above -> update: x_train_ is now a class variable
-        input_shape = 10  # Would be x_train_.shape[1], but we dont have parameters with the Keras_tuner (or do we?)
+        input_shape = self.x_train_.shape[1]  # Would be x_train_.shape[1], but we dont have parameters with the Keras_tuner (or do we?)
         model.add(tf.keras.layers.InputLayer(input_shape=(input_shape)))
 
-        model.add(tf.keras.layers.Dense(hp.Choice('neurons_first_layer', [60, 120, 240]),
-                                        activation=hp.Choice('active_func_L1', ["relu", "tanh", "linear", "sigmoid"])))
+        model.add(tf.keras.layers.RepeatVector(hp.Choice('RNN_Lookback', [15, 30, 60, 120, 240])))
 
-        if hp.Boolean("dropout_L1"):
-            model.add(tf.keras.layers.Dropout(hp.Choice('dropout_first_layer', [0.125, 0.25])))
-
-        model.add(tf.keras.layers.Dense(hp.Choice('neurons_second_layer', [60, 120, 240]),
-                                        activation=hp.Choice('active_func_L2', ["relu", "tanh", "linear", "sigmoid"])))
-
-        if hp.Boolean("dropout_L2"):
-            model.add(tf.keras.layers.Dropout(hp.Choice('dropout_second_layer', [0.125, 0.25])))
+        if hp.Boolean('GRU'):
+            model.add(
+                tf.keras.layers.GRU(hp.Choice('GRU_L1_units', [60, 120, 240]), return_sequences=True, activation=hp.Choice("GRU_L1_actfun", ["relu", "tanh", "selu"])))
+            if True:#hp.Boolean('GRU_L1_dropoutBool'):
+                model.add(tf.keras.layers.Dropout(hp.Choice('GRU_L1_dropoutUnit', [0.12, 0.25, 0.5])))
+            model.add(
+                tf.keras.layers.GRU(hp.Choice('GRU_L2_units', [60, 120, 240]), return_sequences=False, activation=hp.Choice("GRU_L2_actfun", ["relu", "tanh", "selu"])))
+            if True: #hp.Boolean('GRU_L2_dropoutBool'):
+                model.add(tf.keras.layers.Dropout(hp.Choice('GRU_L2_dropoutUnit', [0.12, 0.25, 0.5])))
+        else:
+            model.add(
+                tf.keras.layers.LSTM(hp.Choice('LSTM_L1_units', [60, 120, 240]), return_sequences=True,
+                                    activation=hp.Choice("LSTM_L1_actfun", ["relu", "tanh", "selu"])))
+            if True: #hp.Boolean('LSTM_L1_dropoutBool'):
+                model.add(tf.keras.layers.Dropout(hp.Choice('LSTM_L1_dropoutUnit', [0.12, 0.25, 0.5])))
+            model.add(
+                tf.keras.layers.LSTM(hp.Choice('LSTM_L2_units', [60, 120, 240]), return_sequences=False,
+                                    activation=hp.Choice("LSTM_L2_actfun", ["relu", "tanh", "selu"])))
+            if True: #hp.Boolean('LSTM_L2_dropoutBool'):
+                model.add(tf.keras.layers.Dropout(hp.Choice('LSTM_L2_dropoutUnit', [0.12, 0.25, 0.5])))
 
         model.add(tf.keras.layers.Dense(1))
 
         learning_rate = hp.Float("lr", min_value=1e-4, max_value=1e-2, sampling="log")
 
         model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate))
+
+        model.summary()
+
         return model
 
     def showFeatureImportance(self, x_train, y_train):
@@ -462,7 +502,7 @@ class Advanced_Model():
 
             autoencoder = tf.keras.Sequential([encoder, decoder])
             autoencoder.compile(loss = 'mean_squared_error', optimizer = 'adam')
-            autoencoder.fit(globals()[str(variable) + "_data_train_"], globals()[str(variable) + "_data_train_"], epochs = 5, batch_size = 100)
+            autoencoder.fit(globals()[str(variable) + "_data_train_"], globals()[str(variable) + "_data_train_"], epochs = 5, batch_size = 1024)
             globals()[str(variable) + "_ae_train"] = encoder.predict(globals()[str(variable) + "_data_train_"]).flatten()
 
         #create dataframe
@@ -504,7 +544,7 @@ class Advanced_Model():
             ])
             autoencoder = tf.keras.Sequential([encoder, decoder])
             autoencoder.compile(loss = 'mean_squared_error', optimizer = 'adam')
-            autoencoder.fit(globals()[str(variable) + "_data_test_"], globals()[str(variable) + "_data_test_"], epochs = 5, batch_size = 100)
+            autoencoder.fit(globals()[str(variable) + "_data_test_"], globals()[str(variable) + "_data_test_"], epochs = 5, batch_size = 1024)
             globals()[str(variable) + "_ae_test"] = encoder.predict(globals()[str(variable) + "_data_test_"]).flatten()
 
         #create dataframe
@@ -529,20 +569,104 @@ class Advanced_Model():
 
         return market_movements_autoencoder_train, market_movements_autoencoder_test
 
+    def calculateBasicVariables(self, window = 30):
+        variables = ["Close", "Open", "High", "Low", "Volume"]
+        
+        # Training Data
+        output_training = pd.DataFrame(self.all_data_training["Time"])
+        output_training.set_index(self.all_data_training.index)
+
+        for variable in variables:
+            x_vec = self.all_data_training[variable].values
+            i_range = range(window, len(x_vec) + 1)
+            x_matrix = []
+            for i in i_range:
+                x_matrix.append(x_vec[i - window:i])
+
+            output_training[f"{variable}_MovMean_{window}"] = np.concatenate([np.repeat(np.NAN, window - 1), np.array(x_matrix).mean(axis=1)])
+
+            i_range = range(window, len(x_vec) + 1)
+            x_matrix = []
+            for i in i_range:
+                x_matrix.append(x_vec[i - window:i])
+
+            output_training[f"{variable}_MovMean_{window}"] = np.concatenate([np.repeat(np.NAN, window - 1), np.array(x_matrix).var(axis=1)])
+
+        output_training["HML"] = self.all_data_training["High"] - self.all_data_training["Low"]
+        output_training["CMO"] = self.all_data_training["Close"] - self.all_data_training["Open"]
+
+
+        # test Data
+        output_test = pd.DataFrame(self.all_data_test["Time"])
+        output_test.set_index(self.all_data_test.index)
+
+        for variable in variables:
+            x_vec = self.all_data_test[variable].values
+            i_range = range(window, len(x_vec) + 1)
+            x_matrix = []
+            for i in i_range:
+                x_matrix.append(x_vec[i - window:i])
+
+            output_test[f"{variable}_MovMean_{window}"] = np.concatenate(
+                [np.repeat(np.NAN, window - 1), np.array(x_matrix).mean(axis=1)])
+
+            i_range = range(window, len(x_vec) + 1)
+            x_matrix = []
+            for i in i_range:
+                x_matrix.append(x_vec[i - window:i])
+
+            output_test[f"{variable}_MovMean_{window}"] = np.concatenate(
+                [np.repeat(np.NAN, window - 1), np.array(x_matrix).var(axis=1)])
+
+        output_test["HML"] = self.all_data_test["High"] - self.all_data_test["Low"]
+        output_test["CMO"] = self.all_data_test["Close"] - self.all_data_test["Open"]
+
+
+        # eval Data
+        #TODO: Implement eval dataset and remote if function
+        output_eval = {}
+        if False:
+            output_eval = pd.DataFrame(self.all_data_eval["Time"])
+            output_eval.set_index(self.all_data_eval.index)
+
+            for variable in variables:
+                x_vec = self.all_data_eval[variable].values
+                i_range = range(window, len(x_vec) + 1)
+                x_matrix = []
+                for i in i_range:
+                    x_matrix.append(x_vec[i - window:i])
+
+                output_eval[f"{variable}_MovMean_{window}"] = np.concatenate(
+                    [np.repeat(np.NAN, window - 1), np.array(x_matrix).mean(axis=1)])
+
+                i_range = range(window, len(x_vec) + 1)
+                x_matrix = []
+                for i in i_range:
+                    x_matrix.append(x_vec[i - window:i])
+
+                output_eval[f"{variable}_MovMean_{window}"] = np.concatenate(
+                    [np.repeat(np.NAN, window - 1), np.array(x_matrix).var(axis=1)])
+
+            output_eval["HML"] = self.all_data_eval["High"] - self.all_data_eval["Low"]
+            output_eval["CMO"] = self.all_data_eval["Close"] - self.all_data_eval["Open"]
+
+        return output_training, output_test, output_eval
+
+
     def mergeFinalFeatureSetAndTargetVariable(self):
 
-        target_variable_training, target_variable_test = self.getTargetVariable()
+            target_variable_training, target_variable_test = self.getTargetVariable()
 
-        #Inner join
-        tmp_df_training = target_variable_training.join(self.featureSet_training, how='inner')
-        tmp_df_test = target_variable_test.join(self.featureSet_test, how='inner')
-        #tmp_df_eval = target_variable_eval.join(self.featureSet_eval, how='inner')
+            #Inner join
+            tmp_df_training = target_variable_training.join(self.featureSet_training, how='inner')
+            tmp_df_test = target_variable_test.join(self.featureSet_test, how='inner')
+            #tmp_df_eval = target_variable_eval.join(self.featureSet_eval, how='inner')
 
-        tmp_df_training.dropna(inplace=True)
-        tmp_df_test.dropna(inplace=True)
-        #tmp_df_eval.dropna(inplace=True)
+            tmp_df_training.dropna(inplace=True)
+            tmp_df_test.dropna(inplace=True)
+            #tmp_df_eval.dropna(inplace=True)
 
-        return tmp_df_training, tmp_df_test#, tmp_df_eval
+            return tmp_df_training, tmp_df_test#, tmp_df_eval
 
     def getTargetVariable(self):
 
