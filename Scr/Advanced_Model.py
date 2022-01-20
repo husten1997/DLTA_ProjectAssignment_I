@@ -17,6 +17,14 @@ class Advanced_Model():
     coin_id = 0
     coin_name = ''
 
+    training_start = 0
+    test_start = 0
+    #Evaluation period is fixed
+    #eval_start = 1622505660
+    eval_start = 1578006000
+    eval_end = 1578092400
+
+
     all_data = pd.DataFrame()
     all_data_training = pd.DataFrame()
     all_data_test = pd.DataFrame()
@@ -33,13 +41,23 @@ class Advanced_Model():
     #Contains top features as well as target variable
     top_features = []
 
+    encoder_dic = {}
+
     x_train_ = []
+    x_test_ = []
+    x_eval_ = []
+
     y_train = []
     y_test = []
+    y_eval = []
     y_train_hat = []
     y_test_hat = []
+    y_eval_hat = []
 
-    def __init__(self, coin_id, all_data, all_data_details):
+    def __init__(self, coin_id, training_start, test_start, all_data, all_data_details):
+
+        self.training_start = training_start
+        self.test_start = test_start
 
         self.all_data = all_data
 
@@ -60,82 +78,40 @@ class Advanced_Model():
         self.data = self.data.reindex(range(self.data.index[0], self.data.index[-1] + 60, 60), method='pad')
         self.data.sort_index(inplace=True)
 
-        training_start, test_start, eval_start = self.getPeriods()
-
+        #TODO'S: evaluationszeitraum aendern
         #This step ist necessary for the calculation of the technical market indicators
-        self.all_data_training = self.all_data[(self.all_data.index >= training_start) & (self.all_data.index <= test_start)]
-        self.all_data_test = self.all_data[(self.all_data.index >= test_start) & (self.all_data.index <= eval_start)]
-        #self.all_data_eval = self.all_data[(self.all_data.index >= eval_start)]
+        self.all_data_training = self.all_data[(self.all_data.index >= self.training_start) & (self.all_data.index < self.test_start)]
+        self.all_data_test = self.all_data[(self.all_data.index >= self.test_start) & (self.all_data.index < self.eval_start)]
+        self.all_data_eval = self.all_data[(self.all_data.index >= self.eval_start) & (self.all_data.index < self.eval_end)]
 
         #This step is necessary for the calculation of all further feature variables
-        self.data_training = self.data[(self.data.index >= training_start) & (self.data.index <= test_start)]
-        self.data_test = self.data[(self.data.index >= test_start) & (self.data.index <= eval_start)]
-        #self.data_eval = self.data[(self.data.index >= eval_start)]
+        self.data_training = self.data[(self.data.index >= self.training_start) & (self.data.index < self.test_start)]
+        self.data_test = self.data[(self.data.index >= self.test_start) & (self.data.index < self.eval_start)]
+        self.data_eval = self.data[(self.data.index >= self.eval_start) & (self.data.index < self.eval_end)]
 
         self.mergeFeatureSets()
         self.stationarity_transformation()
         self.setTopFeatureVariables()
 
-    #Help function to get test, training & evaluation period (see setupData() function above)
-    def getPeriods(self):
-
-        starting_date = self.data.Time.iloc[0]
-        ending_date = date(2021, 9, 21)
-        numb_month = (ending_date.year - starting_date.year) * 12 + (ending_date.month - starting_date.month)
-
-        #Calculate six month timesplits
-        timesplits = [starting_date + i * relativedelta(months=6) for i in range((numb_month // 6) + 1)] + \
-                     [self.data.Time.iloc[-1]]
-
-        #Take the last two six-month-plots as training period respectively test period & the last plot as eval period
-        start_train = datetime.timestamp(timesplits[len(timesplits) - 4])
-        start_test = datetime.timestamp(timesplits[len(timesplits) - 3])
-        start_eval = datetime.timestamp(timesplits[len(timesplits) - 2])
-
-        #Additional: create subplots (closing price development split up)
-        tot = len(timesplits) - 1
-        cols = 2
-
-        rows = tot // cols
-        rows += tot % cols
-
-        position = range(1, tot + 1)
-
-        fig = self.createFigure()
-        fig.suptitle(self.coin_name, fontsize=20)
-
-        for j in range(tot):
-            tmp_df = self.data.loc[datetime.timestamp(timesplits[j]):datetime.timestamp(timesplits[j + 1])]
-            ax = fig.add_subplot(rows, cols, position[j])
-            ax.plot(tmp_df.Time, tmp_df.Close)
-            ax.set_xlabel('Time', fontsize=15)
-            ax.set_ylabel('Closing Price', fontsize=15)
-
-        plt.show()
-        del tmp_df
-
-        #return start_train, start_test, start_eval
-
-        #Jan 01 2020 00:00:00, Jan 02 2020 00:00:00 & Jan 03 2020 00:00:00
-        return 1577833200, 1577919600, 1578006000
-
-        #Jan 01 2020 00:00:00, Feb 01 2020 00:00:00, Mar 01 2020 00:00:00
-        #return 1577833200, 1580511600, 1583017200
-
     def mergeFeatureSets(self):
 
         #Get various feature sets
-        market_movements_autoencoder_train, market_movements_autoencoder_test = self.calculateTechnicalMarketIndicators()
+        basic_variables_training, basic_variables_test, basic_variables_eval = self.calculateBasicVariables()
         tech_indicators_training, tech_indicators_test, tech_indicators_eval = self.calculateTechnicalIndicators()
-        #TODO: calculate basic variables
+        market_movements_autoencoder_training, market_movements_autoencoder_test, market_movements_autoencoder_eval = self.calculateTechnicalMarketIndicators()
 
         #Merge different feature sets to one final feature set for each period
-        self.featureSet_training = tech_indicators_training.join(market_movements_autoencoder_train, how='inner')
-        self.featureSet_test = tech_indicators_test.join(market_movements_autoencoder_test, how='inner')
-        #self.featureSet_eval = tech_indicators_eval
+        self.featureSet_training = basic_variables_training.join(tech_indicators_training, how='inner')
+        self.featureSet_test = basic_variables_test.join(tech_indicators_test, how='inner')
+        self.featureSet_eval = basic_variables_eval.join(tech_indicators_eval, how='inner')
+
+        self.featureSet_training = self.featureSet_training.join(market_movements_autoencoder_training, how='inner')
+        self.featureSet_test = self.featureSet_test.join(market_movements_autoencoder_test, how='inner')
+        self.featureSet_eval = self.featureSet_eval.join(market_movements_autoencoder_eval, how='inner')
 
         self.featureSet_training.dropna(inplace=True)
         self.featureSet_test.dropna(inplace=True)
+        self.featureSet_eval.dropna(inplace=True)
 
     def stationarity_transformation(self):
 
@@ -143,26 +119,26 @@ class Advanced_Model():
             timeseries = self.featureSet_training[variable]
             result = adfuller(timeseries)
             p_value = result[1]
-            if p_value < 0.05:
+            if p_value > 0.05:
                 self.featureSet_training[variable] = self.featureSet_training[variable].diff()
 
         for variable in self.featureSet_test.columns:
             timeseries = self.featureSet_test[variable]
             result = adfuller(timeseries)
             p_value = result[1]
-            if p_value < 0.05:
+            if p_value > 0.05:
                 self.featureSet_test[variable] = self.featureSet_test[variable].diff()
-        """""
+
         for variable in self.featureSet_eval.columns:
             timeseries = self.featureSet_eval[variable]
             result = adfuller(timeseries)
             p_value = result[1]
-            if p_value < 0.05:
-                self.featureSet_eval[variable] = self.featureSet_eval[variable].pct_change()
-        """""
+            if p_value > 0.05:
+                self.featureSet_eval[variable] = self.featureSet_eval[variable].diff()
 
         self.featureSet_training.dropna(inplace=True)
         self.featureSet_test.dropna(inplace=True)
+        self.featureSet_eval.dropna(inplace=True)
 
     def setTopFeatureVariables(self):
 
@@ -175,53 +151,28 @@ class Advanced_Model():
 
         print('Correlation of the Features of [' +
               self.coin_name +
-              '] with the target variable: \n' + str((find_corr_features_print.loc[find_corr_features > 0.15])))
+              '] with the target variable: \n' + str((find_corr_features_print.loc[find_corr_features > 0.12])))
 
-        self.top_features = list(find_corr_features.loc[find_corr_features > 0.15].index)
+        self.top_features = list(find_corr_features.loc[find_corr_features > 0.12].index)
 
-    """"" Not necessary due to the spearman correlation
-    def nonlin_transform(self):
-
-        indices = []
-
-        for variable in self.featureSet_training.columns:
-            for poly in range(2,4):
-                index = f"{variable}_{poly}"
-                indices.append(index)
-
-        for variable in self.featureSet_training.columns:
-            for poly in range(2,4):
-                #nonlintransformation of training data
-                self.featureSet_training[f"{variable}_{poly}"] = self.featureSet_training[f"{variable}"].values**poly
-
-        for variable in self.featureSet_test.columns:
-            for poly in range(2,4):
-                index = f"{variable}_{poly}"
-                indices.append(index)
-
-        for variable in self.featureSet_test.columns:
-            for poly in range(2,4):
-                #nonlintransformation of test data
-                self.featureSet_test[f"{variable}_{poly}"] = self.featureSet_test[f"{variable}"].values**poly
-
-        #TODO: non linear transformation for evalution data
-
-    """""
-
-    def applyModel(self, epochs, method = "Tuner"):
+    def applyModel(self, epochs, method = "FNN"):
 
         tmp_df_training = self.mergeFinalFeatureSetAndTargetVariable()[0]
         tmp_df_test = self.mergeFinalFeatureSetAndTargetVariable()[1]
+        tmp_df_eval = self.mergeFinalFeatureSetAndTargetVariable()[2]
 
         x_train = tmp_df_training[self.top_features].drop(['Target'], axis=1)
         x_test = tmp_df_test[self.top_features].drop(['Target'], axis=1)
+        x_eval = tmp_df_eval[self.top_features].drop(['Target'], axis=1)
 
         self.y_train = tmp_df_training['Target'].values
         self.y_test = tmp_df_test['Target'].values
+        self.y_eval = tmp_df_eval['Target'].values
 
         #Variable x_train_ is also used in method buildAdvModel_KerasTuner(), therefore we have to declare it as class variable
         self.x_train_ = self.scaling(x_train)
         self.x_test_ = self.scaling(x_test)
+        self.x_eval_ = self.scaling(x_eval)
 
         if method == "FNN":
             config = {
@@ -269,6 +220,7 @@ class Advanced_Model():
 
         self.y_train_hat = self.adv_model.predict(self.x_train_).flatten()
         self.y_test_hat = self.adv_model.predict(self.x_test_).flatten()
+        self.y_eval_hat = self.adv_model.predict(self.x_eval_).flatten()
 
         #Show Feature Importance after estimation of the model
         self.showFeatureImportance(x_train, self.y_train)
@@ -417,7 +369,7 @@ class Advanced_Model():
                                              close='Close',
                                              volume='Volume',
                                              fillna=False)
-        """"" -> eval ist derzeit nicht relevant
+
         tmp_df_eval['close_1'] = tmp_df_eval.Close.diff()
         tmp_df_eval['close_15'] = tmp_df_eval.Close.diff(15)
         tmp_df_eval['close_60'] = tmp_df_eval.Close.diff(60)
@@ -440,7 +392,6 @@ class Advanced_Model():
                                            close='Close',
                                            volume='Volume',
                                            fillna=False)
-        """""
 
         #Delete variables that are no technical indicators
         tmp_df_training = tmp_df_training.drop(
@@ -449,16 +400,14 @@ class Advanced_Model():
         tmp_df_test = tmp_df_test.drop(
             ['Asset_ID', 'Count', 'Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'VWAP', 'Target', 'Time',
              'Weight', 'Asset_Name'], axis=1)
-        # tmp_df_eval.drop(['Asset_ID', 'Count', 'Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'VWAP', 'Target', 'Time',
-        # 'Weight', 'Asset_Name'], axis=1)
+        tmp_df_eval = tmp_df_eval.drop(
+            ['Asset_ID', 'Count', 'Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'VWAP', 'Target', 'Time',
+            'Weight', 'Asset_Name'], axis=1)
 
         #Delete variables with more than 100 missing values
         tmp_df_training = tmp_df_training.drop(tmp_df_training.columns[tmp_df_training.isnull().sum() > 100], axis=1)
         tmp_df_test = tmp_df_test.drop(tmp_df_test.columns[tmp_df_test.isnull().sum() > 100], axis=1)
-        #tmp_df_eval = tmp_df_eval.drop(tmp_df_eval.columns[tmp_df_eval.isnull().sum() > 100], axis=1)
-
-        #tmp_df_training.dropna(inplace=True)
-        #tmp_df_test.dropna(inplace=True)
+        tmp_df_eval = tmp_df_eval.drop(tmp_df_eval.columns[tmp_df_eval.isnull().sum() > 100], axis=1)
 
         return tmp_df_training, tmp_df_test, tmp_df_eval
 
@@ -469,16 +418,19 @@ class Advanced_Model():
 
         #create pivot table for training data
         data_pivot_train = self.all_data_training.pivot_table(index=self.all_data_training.index, columns = 'Asset_ID')
-        #TODO: is > 1000 enough or is it too less restrictive?
         data_pivot_train = data_pivot_train.drop(data_pivot_train.columns[data_pivot_train.isnull().sum() > 1000], axis=1)
 
         #create pivot table for testing data
         data_pivot_test = self.all_data_test.pivot_table(index=self.all_data_test.index, columns = 'Asset_ID')
-        #TODO: is > 1000 enough or is it too less restrictive?
         data_pivot_test = data_pivot_test.drop(data_pivot_test.columns[data_pivot_test.isnull().sum() > 1000], axis=1)
 
-        X_scaler = MinMaxScaler()
+        data_pivot_eval = self.all_data_eval.pivot_table(index=self.all_data_eval.index, columns='Asset_ID')
+        data_pivot_eval = data_pivot_eval.drop(data_pivot_eval.columns[data_pivot_eval.isnull().sum() > 1000], axis=1)
 
+        X_scaler = MinMaxScaler()
+        
+        #training_______________________________________________________________________________________________________
+        
         #Seperate sorted variables from each other and scale them
         for variable in variables:
             globals()[str(variable) + "_data_train"] = data_pivot_train[variable]
@@ -503,7 +455,8 @@ class Advanced_Model():
             autoencoder = tf.keras.Sequential([encoder, decoder])
             autoencoder.compile(loss = 'mean_squared_error', optimizer = 'adam')
             autoencoder.fit(globals()[str(variable) + "_data_train_"], globals()[str(variable) + "_data_train_"], epochs = 5, batch_size = 1024)
-            globals()[str(variable) + "_ae_train"] = encoder.predict(globals()[str(variable) + "_data_train_"]).flatten()
+            self.encoder_dic[str(variable)] = encoder
+            globals()[str(variable) + "_ae_train"] = self.encoder_dic[str(variable)].predict(globals()[str(variable) + "_data_train_"]).flatten()
 
         #create dataframe
         market_movements_autoencoder_train = pd.DataFrame(columns = [f"{variable}_market" for variable in variables], index = globals()[str(variable) + "_data_train_"].index)
@@ -523,29 +476,14 @@ class Advanced_Model():
         market_movements_autoencoder_train.columns = [col_name + '_market' for col_name in market_movements_autoencoder_train.columns]
         market_movements_autoencoder_train.fillna(method = "pad", inplace = True)
         market_movements_autoencoder_train = market_movements_autoencoder_train.drop(market_movements_autoencoder_train.columns[market_movements_autoencoder_train.isnull().sum() > 100], axis = 1)
-        #market_movements_autoencoder_train.dropna(inplace=True)
+
+        #test___________________________________________________________________________________________________________
 
         for variable in variables:
             globals()[str(variable) + "_data_test"] = data_pivot_test[variable]
             globals()[str(variable) + "_data_test_"] = pd.DataFrame(X_scaler.fit_transform(globals()[str(variable) + "_data_test"]), index=globals()[str(variable) + "_data_test"].index, columns=globals()[str(variable) + "_data_test"].columns)
             globals()[str(variable) + "_data_test_"] = globals()[str(variable) + "_data_test_"].dropna()
-
-            #Autoencode the testing data
-            print(f"-----Autoencoding {variable} test data-----")
-            encoder = tf.keras.Sequential([
-                tf.keras.layers.InputLayer(input_shape = (globals()[str(variable) + "_data_test_"].shape[1])),
-                tf.keras.layers.Dense(5),
-                tf.keras.layers.Dense(1)
-            ])
-            decoder = tf.keras.Sequential([
-                tf.keras.layers.InputLayer(input_shape = (1)),
-                tf.keras.layers.Dense(10),
-                tf.keras.layers.Dense(globals()[str(variable) + "_data_test_"].shape[1])
-            ])
-            autoencoder = tf.keras.Sequential([encoder, decoder])
-            autoencoder.compile(loss = 'mean_squared_error', optimizer = 'adam')
-            autoencoder.fit(globals()[str(variable) + "_data_test_"], globals()[str(variable) + "_data_test_"], epochs = 5, batch_size = 1024)
-            globals()[str(variable) + "_ae_test"] = encoder.predict(globals()[str(variable) + "_data_test_"]).flatten()
+            globals()[str(variable) + "_ae_test"] = self.encoder_dic[str(variable)].predict(globals()[str(variable) + "_data_test_"]).flatten()
 
         #create dataframe
         market_movements_autoencoder_test = pd.DataFrame(columns = [f"{variable}_market" for variable in variables], index = globals()[str(variable) + "_data_test_"].index)
@@ -565,19 +503,54 @@ class Advanced_Model():
         market_movements_autoencoder_test.columns = [col_name + '_market' for col_name in market_movements_autoencoder_test.columns]
         market_movements_autoencoder_test.fillna(method = "pad", inplace = True)
         market_movements_autoencoder_test = market_movements_autoencoder_test.drop(market_movements_autoencoder_test.columns[market_movements_autoencoder_test.isnull().sum() > 100], axis = 1)
-        #market_movements_autoencoder_test.dropna(inplace=True)
-
-        return market_movements_autoencoder_train, market_movements_autoencoder_test
-
-    def calculateBasicVariables(self, window = 30):
-        variables = ["Close", "Open", "High", "Low", "Volume"]
         
-        # Training Data
-        output_training = pd.DataFrame(self.all_data_training["Time"])
-        output_training.set_index(self.all_data_training.index)
+        #eval___________________________________________________________________________________________________________
 
         for variable in variables:
-            x_vec = self.all_data_training[variable].values
+
+            globals()[str(variable) + "_data_eval"] = data_pivot_eval[variable]
+            globals()[str(variable) + "_data_eval_"] = pd.DataFrame(
+                X_scaler.fit_transform(globals()[str(variable) + "_data_eval"]),
+                index=globals()[str(variable) + "_data_eval"].index,
+                columns=globals()[str(variable) + "_data_eval"].columns)
+            globals()[str(variable) + "_data_eval_"] = globals()[str(variable) + "_data_eval_"].dropna()
+
+            globals()[str(variable) + "_ae_eval"] = self.encoder_dic[str(variable)].predict(
+                globals()[str(variable) + "_data_eval_"]).flatten()
+
+            # create dataframe
+        market_movements_autoencoder_eval = pd.DataFrame(columns=[f"{variable}_market" for variable in variables],
+                                                         index=globals()[str(variable) + "_data_eval_"].index)
+
+        # fill dataframe
+        for variable in variables:
+            market_movements_autoencoder_eval[f"{variable}"] = globals()[str(variable) + "_ae_eval"]
+
+        market_movements_autoencoder_eval = ta.add_all_ta_features(market_movements_autoencoder_eval,
+                                                                   open='Open',
+                                                                   high='High',
+                                                                   low='Low',
+                                                                   close='Close',
+                                                                   volume='Volume',
+                                                                   fillna=False)
+
+        market_movements_autoencoder_eval.columns = [col_name + '_market' for col_name in
+                                                     market_movements_autoencoder_eval.columns]
+        market_movements_autoencoder_eval.fillna(method="pad", inplace=True)
+        market_movements_autoencoder_eval = market_movements_autoencoder_eval.drop(
+        market_movements_autoencoder_eval.columns[market_movements_autoencoder_eval.isnull().sum() > 100], axis=1)
+
+        return market_movements_autoencoder_train, market_movements_autoencoder_test, market_movements_autoencoder_eval
+
+    def calculateBasicVariables(self, window = 30):
+
+        variables = ["Close", "Open", "High", "Low", "Volume"]
+        
+        #Training Data
+        output_training = pd.DataFrame()
+
+        for variable in variables:
+            x_vec = self.data_training[variable].values
             i_range = range(window, len(x_vec) + 1)
             x_matrix = []
             for i in i_range:
@@ -592,16 +565,14 @@ class Advanced_Model():
 
             output_training[f"{variable}_MovMean_{window}"] = np.concatenate([np.repeat(np.NAN, window - 1), np.array(x_matrix).var(axis=1)])
 
-        output_training["HML"] = self.all_data_training["High"] - self.all_data_training["Low"]
-        output_training["CMO"] = self.all_data_training["Close"] - self.all_data_training["Open"]
+        output_training["HML"] = self.data_training["High"].values - self.data_training["Low"].values
+        output_training["CMO"] = self.data_training["Close"].values - self.data_training["Open"].values
 
-
-        # test Data
-        output_test = pd.DataFrame(self.all_data_test["Time"])
-        output_test.set_index(self.all_data_test.index)
+        #Test Data
+        output_test = pd.DataFrame()
 
         for variable in variables:
-            x_vec = self.all_data_test[variable].values
+            x_vec = self.data_test[variable].values
             i_range = range(window, len(x_vec) + 1)
             x_matrix = []
             for i in i_range:
@@ -618,59 +589,56 @@ class Advanced_Model():
             output_test[f"{variable}_MovMean_{window}"] = np.concatenate(
                 [np.repeat(np.NAN, window - 1), np.array(x_matrix).var(axis=1)])
 
-        output_test["HML"] = self.all_data_test["High"] - self.all_data_test["Low"]
-        output_test["CMO"] = self.all_data_test["Close"] - self.all_data_test["Open"]
+        output_test["HML"] = self.data_test["High"].values - self.data_test["Low"].values
+        output_test["CMO"] = self.data_test["Close"].values - self.data_test["Open"].values
 
+        output_eval = pd.DataFrame()
 
-        # eval Data
-        #TODO: Implement eval dataset and remote if function
-        output_eval = {}
-        if False:
-            output_eval = pd.DataFrame(self.all_data_eval["Time"])
-            output_eval.set_index(self.all_data_eval.index)
+        for variable in variables:
+            x_vec = self.data_eval[variable].values
+            i_range = range(window, len(x_vec) + 1)
+            x_matrix = []
+            for i in i_range:
+                x_matrix.append(x_vec[i - window:i])
 
-            for variable in variables:
-                x_vec = self.all_data_eval[variable].values
-                i_range = range(window, len(x_vec) + 1)
-                x_matrix = []
-                for i in i_range:
-                    x_matrix.append(x_vec[i - window:i])
+            output_eval[f"{variable}_MovMean_{window}"] = np.concatenate(
+            [np.repeat(np.NAN, window - 1), np.array(x_matrix).mean(axis=1)])
 
-                output_eval[f"{variable}_MovMean_{window}"] = np.concatenate(
-                    [np.repeat(np.NAN, window - 1), np.array(x_matrix).mean(axis=1)])
+            i_range = range(window, len(x_vec) + 1)
+            x_matrix = []
+            for i in i_range:
+                x_matrix.append(x_vec[i - window:i])
 
-                i_range = range(window, len(x_vec) + 1)
-                x_matrix = []
-                for i in i_range:
-                    x_matrix.append(x_vec[i - window:i])
+            output_eval[f"{variable}_MovMean_{window}"] = np.concatenate(
+            [np.repeat(np.NAN, window - 1), np.array(x_matrix).var(axis=1)])
 
-                output_eval[f"{variable}_MovMean_{window}"] = np.concatenate(
-                    [np.repeat(np.NAN, window - 1), np.array(x_matrix).var(axis=1)])
+        output_eval["HML"] = self.data_eval["High"].values - self.data_eval["Low"].values
+        output_eval["CMO"] = self.data_eval["Close"].values - self.data_eval["Open"].values
 
-            output_eval["HML"] = self.all_data_eval["High"] - self.all_data_eval["Low"]
-            output_eval["CMO"] = self.all_data_eval["Close"] - self.all_data_eval["Open"]
+        output_training.set_index(self.data_training.index, inplace=True)
+        output_test.set_index(self.data_test.index, inplace=True)
+        output_eval.set_index(self.data_eval.index, inplace=True)
 
         return output_training, output_test, output_eval
 
-
     def mergeFinalFeatureSetAndTargetVariable(self):
 
-            target_variable_training, target_variable_test = self.getTargetVariable()
+            target_variable_training, target_variable_test, target_variable_eval = self.getTargetVariable()
 
             #Inner join
             tmp_df_training = target_variable_training.join(self.featureSet_training, how='inner')
             tmp_df_test = target_variable_test.join(self.featureSet_test, how='inner')
-            #tmp_df_eval = target_variable_eval.join(self.featureSet_eval, how='inner')
+            tmp_df_eval = target_variable_eval.join(self.featureSet_eval, how='inner')
 
             tmp_df_training.dropna(inplace=True)
             tmp_df_test.dropna(inplace=True)
-            #tmp_df_eval.dropna(inplace=True)
+            tmp_df_eval.dropna(inplace=True)
 
-            return tmp_df_training, tmp_df_test#, tmp_df_eval
+            return tmp_df_training, tmp_df_test, tmp_df_eval
 
     def getTargetVariable(self):
 
-        return self.data_training['Target'].to_frame(), self.data_test['Target'].to_frame()#, self.data_eval['Target']
+        return self.data_training['Target'].to_frame(), self.data_test['Target'].to_frame(), self.data_eval['Target'].to_frame()
 
     def scaling(self, df):
 
@@ -698,11 +666,9 @@ class Advanced_Model():
 
         return self.mergeFinalFeatureSetAndTargetVariable()[1]
 
-    """""
     def getFinalDataFrameEval(self):
 
         return self.mergeFinalFeatureSetAndTargetVariable()[2]
-    """""
 
     def getTopFeatureVariables(self):
 
@@ -710,11 +676,11 @@ class Advanced_Model():
 
     def getFittedData(self):
 
-        return self.y_train_hat, self.y_test_hat
+        return self.y_train_hat, self.y_test_hat, self.y_eval_hat
 
     def getRealData(self):
 
-        return self.y_train, self.y_test
+        return self.y_train, self.y_test, self.y_eval
 
 
 

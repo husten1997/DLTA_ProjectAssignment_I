@@ -9,12 +9,13 @@ all_data, all_data_details = import_data("Data")
 coin_id = 6
 
 #Create an instance of advanced model
-advanced_model = Advanced_Model(coin_id, all_data, all_data_details)
+advanced_model = Advanced_Model(coin_id, 1577833200, 1577919600, all_data, all_data_details)
 
 #Create heat map of the top feature variables
 coin_name = advanced_model.getCoinName()
 finalDataframe_training = advanced_model.getFinalDataframeTraining()
 finalDataFrame_test = advanced_model.getFinalDataframeTest()
+finaleDataFrame_eval = advanced_model.getFinalDataFrameEval()
 top_features = advanced_model.getTopFeatureVariables()
 
 createHeatMapTopFeatureVariables(coin_name, finalDataframe_training, finalDataFrame_test, top_features)
@@ -23,11 +24,13 @@ createHeatMapTopFeatureVariables(coin_name, finalDataframe_training, finalDataFr
 advanced_model.applyModel(20)
 
 #Conduct performance evaluation
-y_train, y_test = advanced_model.getRealData()
-y_train_hat, y_test_hat = advanced_model.getFittedData()
+y_train, y_test, y_eval = advanced_model.getRealData()
+y_train_hat, y_test_hat, y_eval_hat = advanced_model.getFittedData()
 
-performanceEval(y_train, y_train_hat, "In-Sample ")
-performanceEval(y_test, y_test_hat, "Out-of-Sample ")
+performanceEval(y_train, y_train_hat, "In-Sample")
+performanceEval(y_test, y_test_hat, "Out-of-Sample")
+performanceEval(y_eval, y_eval_hat, "True Out-of-Sample")
+
 
 
 
