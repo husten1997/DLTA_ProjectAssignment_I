@@ -80,12 +80,23 @@ class Advanced_Model():
 
         #TODO'S: evaluationszeitraum aendern
         #This step ist necessary for the calculation of the technical market indicators
-        # self.all_data_training = self.all_data[(self.all_data.index >= self.training_start) & (self.all_data.index < self.test_start)]
-        # self.all_data_test = self.all_data[(self.all_data.index >= self.test_start) & (self.all_data.index < self.eval_start)]
+        self.all_data_training = self.all_data[(self.all_data.index >= self.training_start) & (self.all_data.index < self.test_start)]
+        self.all_data_test = self.all_data[(self.all_data.index >= self.test_start) & (self.all_data.index < self.eval_start)]
         
-        data = self.all_data[(self.all_data.index >= self.training_start) & (self.all_data.index < self.eval_start)]
-        train_index = floor(data.shape[0] * 0.7)
-        self.all_data_training, self.all_data_test = self.all_data[:train_index], self.all_data[train_index:]
+        # data = self.all_data[(self.all_data.index >= self.training_start) & (self.all_data.index < self.eval_start)]
+        # train_index = int(np.floor(data.shape[0] * 0.7))
+        # print(train_index)
+        # self.all_data_training, self.all_data_test = data[:train_index], data[train_index:]
+        # print(self.all_data_training.shape)
+        # print(self.all_data_test.shape)
+        # print(data.shape)
+
+        #for var in self.all_data_training.columns:
+        #    print(str(var) + str(self.all_data_training[var].isna().sum()))
+
+        #for var in self.all_data_test.columns:
+        #   print(str(var) + str(self.all_data_training[var].isna().sum()))
+
         self.all_data_eval = self.all_data[(self.all_data.index >= self.eval_start) & (self.all_data.index < self.eval_end)]
 
         #This step is necessary for the calculation of all further feature variables

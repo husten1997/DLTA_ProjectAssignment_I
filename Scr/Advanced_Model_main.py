@@ -1,3 +1,4 @@
+#%%
 from Scr.Advanced_Model import Advanced_Model
 from Scr.functions import import_data
 from Scr.functions import createHeatMapTopFeatureVariables
@@ -20,6 +21,7 @@ top_features = advanced_model.getTopFeatureVariables()
 
 createHeatMapTopFeatureVariables(coin_name, finalDataframe_training, finalDataFrame_test, top_features)
 
+#%%
 #Apply / set advanced model
 advanced_model.applyModel(20)
 
