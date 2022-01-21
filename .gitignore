@@ -117,3 +117,6 @@ usage.statistics.xml
 .Rhistory
 *.Rhistory
 /.RData
+
+# Notebookfiles
+Notebook/*

@@ -80,8 +80,12 @@ class Advanced_Model():
 
         #TODO'S: evaluationszeitraum aendern
         #This step ist necessary for the calculation of the technical market indicators
-        self.all_data_training = self.all_data[(self.all_data.index >= self.training_start) & (self.all_data.index < self.test_start)]
-        self.all_data_test = self.all_data[(self.all_data.index >= self.test_start) & (self.all_data.index < self.eval_start)]
+        # self.all_data_training = self.all_data[(self.all_data.index >= self.training_start) & (self.all_data.index < self.test_start)]
+        # self.all_data_test = self.all_data[(self.all_data.index >= self.test_start) & (self.all_data.index < self.eval_start)]
+        
+        data = self.all_data[(self.all_data.index >= self.training_start) & (self.all_data.index < self.eval_start)]
+        train_index = floor(data.shape[0] * 0.7)
+        self.all_data_training, self.all_data_test = self.all_data[:train_index], self.all_data[train_index:]
         self.all_data_eval = self.all_data[(self.all_data.index >= self.eval_start) & (self.all_data.index < self.eval_end)]
 
         #This step is necessary for the calculation of all further feature variables
