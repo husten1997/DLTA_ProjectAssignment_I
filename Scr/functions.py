@@ -45,16 +45,20 @@ def performanceEval(Y, Y_hat, preFix = ""):
 
     plt.plot(u, label='Residuals')
     plt.title(preFix + 'Residuals over time (u x t)')
+    plt.xlabel("time")
+    plt.ylabel("residuals")
     plt.legend()
     plt.show()
 
     plt.plot(u, Y_hat, 'bo', label='Residuals')
     plt.title(preFix + 'Residual Plot (u x y.hat)')
+    plt.xlabel("residuals")
+    plt.ylabel("predictions")
     plt.legend()
     plt.show()
 
     #return str(corr)
-    #return str(corr(Y.reshape((-1)), Y_hat.reshape((-1))))
+    return {"corr": corr(Y, Y_hat), "Bias": Bias(Y, Y_hat), "Var": Var(Y, Y_hat), "MSE": MSE(Y, Y_hat)}
 
 def corr(Y, Y_hat):
     import numpy as np
@@ -87,4 +91,4 @@ def Var(Y, Y_hat):
     return np.var(u)
 
 def MSE(Y, Y_hat):
-    return Bias(Y, Y_hat) + Var(Y, Y_hat)
+    return Bias(Y, Y_hat)**2 + Var(Y, Y_hat)
