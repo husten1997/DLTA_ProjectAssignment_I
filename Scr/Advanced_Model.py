@@ -54,7 +54,9 @@ class Advanced_Model():
     y_test_hat = []
     y_eval_hat = []
 
-    def __init__(self, coin_id, training_start, test_start, all_data, all_data_details):
+    modelType = ""
+
+    def __init__(self, coin_id, training_start, test_start, all_data, all_data_details, modelType = "GRU"):
 
         self.training_start = training_start
         self.test_start = test_start
@@ -67,6 +69,8 @@ class Advanced_Model():
         self.all_data_details = all_data_details[all_data_details.Asset_ID == coin_id]
         self.all_data_details.reset_index(drop=True, inplace=True)
         self.coin_name = self.all_data_details.Asset_Name[0]
+
+        self.modelType = modelType
 
         self.setupData()
 
@@ -192,25 +196,15 @@ class Advanced_Model():
         if method == "FNN":
             config = {
                 "RNN_Lookback": 15,
-                "GRU": True,
                 #GRU
-                "GRU_L1_units": 120,
-                "GRU_L1_actfun": "tanh",
-                "GRU_L1_dropoutBool": True,
-                "GRU_L1_dropoutUnit": 0.25,
-                "GRU_L2_units": 60,
-                "GRU_L2_actfun": "tanh",
-                "GRU_L2_dropoutBool": True,
-                "GRU_L2_dropoutUnit": 0.25,
-                #LSTM
-                "LSTM_L1_units": 120,
-                "LSTM_L1_actfun": "tanh",
-                "LSTM_L1_dropoutBool": True,
-                "LSTM_L1_dropoutUnit": 0.25,
-                "LSTM_L2_units": 60,
-                "LSTM_L2_actfun": "tanh",
-                "LSTM_L2_dropoutBool": True,
-                "LSTM_L2_dropoutUnit": 0.25,
+                "RNN_L1_units": 120,
+                "RNN_L1_actfun": "tanh",
+                "RNN_L1_dropoutBool": True,
+                "RNN_L1_dropoutUnit": 0.25,
+                "RNN_L2_units": 60,
+                "RNN_L2_actfun": "tanh",
+                "RNN_L2_dropoutBool": True,
+                "RNN_L2_dropoutUnit": 0.25,
                 "lr": 1e-2}
 
             self.adv_model = self.buildAdvModel(config)
@@ -221,7 +215,7 @@ class Advanced_Model():
             plt.legend()
             plt.show()
 
-        elif method == "Tuner": # TODO: Tuner currently broken due to missing input shape
+        elif method == "Tuner":
             self.tuner = kt.RandomSearch(self.buildAdvModel_KerasTuner, objective='val_loss', max_trials=10)
 
             self.tuner.search(self.x_train_, self.y_train, epochs = 10, validation_data=(self.x_test_, self.y_test), batch_size = 1024)
@@ -248,22 +242,22 @@ class Advanced_Model():
         
         model.add(tf.keras.layers.RepeatVector(config["RNN_Lookback"]))
         
-        if config['GRU']:
-            model.add(tf.keras.layers.GRU(config['GRU_L1_units'], return_sequences=True, activation=config["GRU_L1_actfun"]))
-            if config['GRU_L1_dropoutBool']:
-                model.add(tf.keras.layers.Dropout(config['GRU_L1_dropoutUnit']))
-            model.add(tf.keras.layers.GRU(config['GRU_L2_units'], return_sequences=False, activation=config["GRU_L2_actfun"]))
-            if config['GRU_L2_dropoutBool']:
-                model.add(tf.keras.layers.Dropout(config['GRU_L2_dropoutUnit']))
+        if self.modelType == "GRU":
+            model.add(tf.keras.layers.GRU(config['RNN_L1_units'], return_sequences=True, activation=config["RNN_L1_actfun"]))
+            if config['RNN_L1_dropoutBool']:
+                model.add(tf.keras.layers.Dropout(config['RNN_L1_dropoutUnit']))
+            model.add(tf.keras.layers.GRU(config['RNN_L2_units'], return_sequences=False, activation=config["RNN_L2_actfun"]))
+            if config['RNN_L2_dropoutBool']:
+                model.add(tf.keras.layers.Dropout(config['RNN_L2_dropoutUnit']))
         else:
             model.add(
-                tf.keras.layers.LSTM(config['LSTM_L1_units'], return_sequences=True, activation=config["LSTM_L1_actfun"]))
-            if config['LSTM_L1_dropoutBool']:
-                model.add(tf.keras.layers.Dropout(config['LSTM_L1_dropoutUnit']))
+                tf.keras.layers.LSTM(config['RNN_L1_units'], return_sequences=True, activation=config["RNN_L1_actfun"]))
+            if config['RNN_L1_dropoutBool']:
+                model.add(tf.keras.layers.Dropout(config['RNN_L1_dropoutUnit']))
             model.add(
-                tf.keras.layers.LSTM(config['LSTM_L2_units'], return_sequences=False, activation=config["LSTM_L2_actfun"]))
-            if config['LSTM_L2_dropoutBool']:
-                model.add(tf.keras.layers.Dropout(config['LSTM_L2_dropoutUnit']))
+                tf.keras.layers.LSTM(config['RNN_L2_units'], return_sequences=False, activation=config["RNN_L2_actfun"]))
+            if config['RNN_L2_dropoutBool']:
+                model.add(tf.keras.layers.Dropout(config['RNN_L2_dropoutUnit']))
 
         model.add(tf.keras.layers.Dense(1))
 
@@ -283,26 +277,26 @@ class Advanced_Model():
 
         model.add(tf.keras.layers.RepeatVector(hp.Choice('RNN_Lookback', [15, 30, 60, 120, 240])))
 
-        if hp.Boolean('GRU'):
+        if self.modelType == "GRU":
             model.add(
-                tf.keras.layers.GRU(hp.Choice('GRU_L1_units', [60, 120, 240]), return_sequences=True, activation=hp.Choice("GRU_L1_actfun", ["relu", "tanh", "selu"])))
-            if True:#hp.Boolean('GRU_L1_dropoutBool'):
-                model.add(tf.keras.layers.Dropout(hp.Choice('GRU_L1_dropoutUnit', [0.12, 0.25, 0.5])))
+                tf.keras.layers.GRU(hp.Choice('RNN_L1_units', [60, 120, 240]), return_sequences=True, activation=hp.Choice("RNN_L1_actfun", ["relu", "tanh", "selu"])))
+            if hp.Boolean('RNN_L1_dropoutBool'):
+                model.add(tf.keras.layers.Dropout(hp.Choice('RNN_L1_dropoutUnit', [0.12, 0.25, 0.5])))
             model.add(
-                tf.keras.layers.GRU(hp.Choice('GRU_L2_units', [60, 120, 240]), return_sequences=False, activation=hp.Choice("GRU_L2_actfun", ["relu", "tanh", "selu"])))
-            if True: #hp.Boolean('GRU_L2_dropoutBool'):
-                model.add(tf.keras.layers.Dropout(hp.Choice('GRU_L2_dropoutUnit', [0.12, 0.25, 0.5])))
+                tf.keras.layers.GRU(hp.Choice('RNN_L2_units', [60, 120, 240]), return_sequences=False, activation=hp.Choice("RNN_L2_actfun", ["relu", "tanh", "selu"])))
+            if hp.Boolean('RNN_L2_dropoutBool'):
+                model.add(tf.keras.layers.Dropout(hp.Choice('RNN_L2_dropoutUnit', [0.12, 0.25, 0.5])))
         else:
             model.add(
-                tf.keras.layers.LSTM(hp.Choice('LSTM_L1_units', [60, 120, 240]), return_sequences=True,
-                                    activation=hp.Choice("LSTM_L1_actfun", ["relu", "tanh", "selu"])))
-            if True: #hp.Boolean('LSTM_L1_dropoutBool'):
-                model.add(tf.keras.layers.Dropout(hp.Choice('LSTM_L1_dropoutUnit', [0.12, 0.25, 0.5])))
+                tf.keras.layers.LSTM(hp.Choice('RNN_L1_units', [60, 120, 240]), return_sequences=True,
+                                    activation=hp.Choice("RNN_L1_actfun", ["relu", "tanh", "selu"])))
+            if hp.Boolean('RNN_L1_dropoutBool'):
+                model.add(tf.keras.layers.Dropout(hp.Choice('RNN_L1_dropoutUnit', [0.12, 0.25, 0.5])))
             model.add(
-                tf.keras.layers.LSTM(hp.Choice('LSTM_L2_units', [60, 120, 240]), return_sequences=False,
-                                    activation=hp.Choice("LSTM_L2_actfun", ["relu", "tanh", "selu"])))
-            if True: #hp.Boolean('LSTM_L2_dropoutBool'):
-                model.add(tf.keras.layers.Dropout(hp.Choice('LSTM_L2_dropoutUnit', [0.12, 0.25, 0.5])))
+                tf.keras.layers.LSTM(hp.Choice('RNN_L2_units', [60, 120, 240]), return_sequences=False,
+                                    activation=hp.Choice("RNN_L2_actfun", ["relu", "tanh", "selu"])))
+            if hp.Boolean('RNN_L2_dropoutBool'):
+                model.add(tf.keras.layers.Dropout(hp.Choice('RNN_L2_dropoutUnit', [0.12, 0.25, 0.5])))
 
         model.add(tf.keras.layers.Dense(1))
 
