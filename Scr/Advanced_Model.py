@@ -10,6 +10,8 @@ from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 import keras_tuner as kt
 from statsmodels.tsa.stattools import adfuller
+from datetime import datetime
+import time
 
 class Advanced_Model():
 
@@ -55,11 +57,23 @@ class Advanced_Model():
     y_eval_hat = []
 
     modelType = ""
+    minCorr = 0
 
-    def __init__(self, coin_id, training_start, test_start, all_data, all_data_details, modelType = "GRU"):
+    def __init__(self, coin_id, all_data, all_data_details, trainStart = "25/05/2021", evalStart = "01/06/2021", minCorr = 0.03):
 
-        self.training_start = training_start
-        self.test_start = test_start
+        totimestamp = lambda s: np.int32(time.mktime(datetime.strptime(s, "%d/%m/%Y").timetuple()))
+
+        timestamps = (totimestamp(trainStart), totimestamp(evalStart))
+
+        self.training_start = timestamps[0]
+        # TODO: Remove test_start (everywhere)
+        self.test_start = totimestamp("28/05/2021")
+
+        self.eval_start = timestamps[1]
+        # TODO: Remove eval_end (everywhere)
+        self.eval_end = totimestamp("02/06/2021")
+
+
 
         self.all_data = all_data
 
@@ -70,7 +84,7 @@ class Advanced_Model():
         self.all_data_details.reset_index(drop=True, inplace=True)
         self.coin_name = self.all_data_details.Asset_Name[0]
 
-        self.modelType = modelType
+        self.minCorr = minCorr
 
         self.setupData()
 
@@ -82,31 +96,54 @@ class Advanced_Model():
         self.data = self.data.reindex(range(self.data.index[0], self.data.index[-1] + 60, 60), method='pad')
         self.data.sort_index(inplace=True)
 
-        #TODO'S: evaluationszeitraum aendern
-        #This step ist necessary for the calculation of the technical market indicators
-        self.all_data_training = self.all_data[(self.all_data.index >= self.training_start) & (self.all_data.index < self.test_start)]
-        self.all_data_test = self.all_data[(self.all_data.index >= self.test_start) & (self.all_data.index < self.eval_start)]
-        
-        # data = self.all_data[(self.all_data.index >= self.training_start) & (self.all_data.index < self.eval_start)]
-        # train_index = int(np.floor(data.shape[0] * 0.7))
-        # print(train_index)
-        # self.all_data_training, self.all_data_test = data[:train_index], data[train_index:]
-        # print(self.all_data_training.shape)
-        # print(self.all_data_test.shape)
-        # print(data.shape)
+        ## START OF OLD SETUPDATA CODE ---------------------------------------------------------------------------------
 
-        #for var in self.all_data_training.columns:
-        #    print(str(var) + str(self.all_data_training[var].isna().sum()))
+        # TODO'S: evaluationszeitraum aendern
+        # This step ist necessary for the calculation of the technical market indicators
+        # self.all_data_training = self.all_data[(self.all_data.index >= self.training_start) & (self.all_data.index < self.test_start)]
+        # self.all_data_test = self.all_data[(self.all_data.index >= self.test_start) & (self.all_data.index < self.eval_start)]
+        # self.all_data_eval = self.all_data[(self.all_data.index >= self.eval_start) & (self.all_data.index < self.eval_end)]
 
-        #for var in self.all_data_test.columns:
-        #   print(str(var) + str(self.all_data_training[var].isna().sum()))
+        # self.data_training = self.data[(self.data.index >= self.training_start) & (self.data.index < self.test_start)]
+        # self.data_test = self.data[(self.data.index >= self.test_start) & (self.data.index < self.eval_start)]
+        # self.data_eval = self.data[(self.data.index >= self.eval_start) & (self.data.index < self.eval_end)]
 
-        self.all_data_eval = self.all_data[(self.all_data.index >= self.eval_start) & (self.all_data.index < self.eval_end)]
+        ## END OF OLD SETUPDATA CODE -----------------------------------------------------------------------------------
 
-        #This step is necessary for the calculation of all further feature variables
-        self.data_training = self.data[(self.data.index >= self.training_start) & (self.data.index < self.test_start)]
-        self.data_test = self.data[(self.data.index >= self.test_start) & (self.data.index < self.eval_start)]
-        self.data_eval = self.data[(self.data.index >= self.eval_start) & (self.data.index < self.eval_end)]
+
+
+        ## START OF NEW SETUP DATA CODE --------------------------------------------------------------------------------
+        # This step is necessary for the calculation of all further feature variables
+        tmp_data = self.data[(self.data.index >= self.training_start) & (self.data.index < self.eval_start)]
+        train_index = int(np.floor(tmp_data.shape[0] * 0.7))
+        self.data_training, self.data_test = tmp_data[:train_index], tmp_data[train_index:]
+
+        train_timestamps = (np.min(self.data_training.index), np.max(self.data_training.index))
+        test_timestamps = (np.min(self.data_test.index), np.max(self.data_test.index))
+
+        print(train_timestamps)
+        print(test_timestamps)
+
+        # TODO: Remove variable reduced_eval
+        #
+
+        ## self.data_eval = self.data[(self.data.index >= self.eval_start)]
+        self.data_eval = self.data[(self.data.index >= self.eval_start) & (self.data.index < (self.eval_end))]
+
+        self.all_data_training = self.all_data[(self.all_data.index >= train_timestamps[0]) & (self.all_data.index <= train_timestamps[1])]
+        self.all_data_test = self.all_data[(self.all_data.index >= test_timestamps[0]) & (self.all_data.index <= test_timestamps[1])]
+
+        self.all_data_eval = self.all_data[(self.all_data.index >= self.eval_start) & (self.all_data.index < (self.eval_end))]
+
+        ## self.all_data_eval = self.all_data[(self.all_data.index >= self.eval_start)]
+
+        # Logs for debug purpose
+        print(f"Comparioson train shape: all_data: {self.all_data_training.shape} with unique {len(np.unique(self.all_data_training['Asset_ID']))} | data: {self.data_training.shape}")
+        print(f"Comparioson test shape: all_data: {self.all_data_test.shape} with unique {len(np.unique(self.all_data_test['Asset_ID']))} | data: {self.data_test.shape}")
+        print(f"Comparioson test shape: all_data: {self.all_data_eval.shape} with unique {len(np.unique(self.all_data_eval['Asset_ID']))} | data: {self.data_eval.shape}")
+
+        ## END OF NEW SETUP DATA CODE ----------------------------------------------------------------------------------
+
 
         self.mergeFeatureSets()
         self.stationarity_transformation()
@@ -170,12 +207,12 @@ class Advanced_Model():
 
         print('Correlation of the Features of [' +
               self.coin_name +
-              '] with the target variable: \n' + str((find_corr_features_print.loc[find_corr_features > 0.12])))
+              '] with the target variable: \n' + str((find_corr_features_print.loc[find_corr_features > self.minCorr])))
 
-        self.top_features = list(find_corr_features.loc[find_corr_features > 0.12].index)
+        self.top_features = list(find_corr_features.loc[find_corr_features > self.minCorr].index)
 
-    def applyModel(self, epochs, method = "FNN"):
-
+    def applyModel(self, epochs, method = "FNN", modelType = "GRU"):
+        self.modelType = modelType
         tmp_df_training = self.mergeFinalFeatureSetAndTargetVariable()[0]
         tmp_df_test = self.mergeFinalFeatureSetAndTargetVariable()[1]
         tmp_df_eval = self.mergeFinalFeatureSetAndTargetVariable()[2]
@@ -565,6 +602,7 @@ class Advanced_Model():
             for i in i_range:
                 x_matrix.append(x_vec[i - window:i])
 
+            #print(f"Variable: {variable}, Shape: {x_matrix.shape}, Shape data_training: {self.data_training.shape}")
             output_training[f"{variable}_MovMean_{window}"] = np.concatenate([np.repeat(np.NAN, window - 1), np.array(x_matrix).mean(axis=1)])
 
             i_range = range(window, len(x_vec) + 1)
