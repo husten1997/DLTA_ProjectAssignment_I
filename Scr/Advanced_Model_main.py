@@ -7,12 +7,12 @@ import numpy as np
 import pandas as pd
 
 #Import whole dataset
-all_data, all_data_details = import_data("Data")
+all_data, all_data_details = import_data("C:/Users/Fabia/pythoninput/DLTA/Data")
 #Define one coin that should be analysed / predicted with his ID => Currently: Ethereum
 coin_id = 6
 
 #Create an instance of advanced model
-advanced_model = Advanced_Model(coin_id, all_data, all_data_details, trainStart = "25/05/2021", evalStart = "27/05/2021")
+advanced_model = Advanced_Model(coin_id, all_data, all_data_details, trainStart = "25/05/2021", evalStart = "01/06/2021")
 
 #%%
 #Create heat map of the top feature variables
