@@ -144,7 +144,6 @@ class Advanced_Model():
 
         ## END OF NEW SETUP DATA CODE ----------------------------------------------------------------------------------
 
-
         self.mergeFeatureSets()
         self.stationarity_transformation()
         self.setTopFeatureVariables()
@@ -164,6 +163,10 @@ class Advanced_Model():
         self.featureSet_training = self.featureSet_training.join(market_movements_autoencoder_training, how='inner')
         self.featureSet_test = self.featureSet_test.join(market_movements_autoencoder_test, how='inner')
         self.featureSet_eval = self.featureSet_eval.join(market_movements_autoencoder_eval, how='inner')
+
+        self.featureSet_training.replace([np.inf, -np.inf], np.nan, inplace=True)
+        self.featureSet_test.replace([np.inf, -np.inf], np.nan, inplace=True)
+        self.featureSet_eval.replace([np.inf, -np.inf], np.nan, inplace=True)
 
         self.featureSet_training.dropna(inplace=True)
         self.featureSet_test.dropna(inplace=True)

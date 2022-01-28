@@ -3,6 +3,8 @@ from Scr.Advanced_Model import Advanced_Model
 from Scr.functions import import_data
 from Scr.functions import createHeatMapTopFeatureVariables
 from Scr.functions import performanceEval
+import numpy as np
+import pandas as pd
 
 #Import whole dataset
 all_data, all_data_details = import_data("Data")
@@ -10,7 +12,7 @@ all_data, all_data_details = import_data("Data")
 coin_id = 6
 
 #Create an instance of advanced model
-advanced_model = Advanced_Model(coin_id, all_data, all_data_details, trainStart = "25/05/2021", evalStart = "01/06/2021")
+advanced_model = Advanced_Model(coin_id, all_data, all_data_details, trainStart = "25/05/2021", evalStart = "27/05/2021")
 
 #%%
 #Create heat map of the top feature variables
