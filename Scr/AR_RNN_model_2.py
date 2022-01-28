@@ -243,13 +243,21 @@ class AR_RNN_model:
 
         model_P1_output = model_P1_input
 
+        # RNN 1
+        if self.modelType == "GRU":
+            model_P1_output = tf.keras.layers.GRU(hp.Choice('P1_L1_RNNUnits', [60, 120, 240]), return_sequences=True)(model_P1_output)
+        else:
+            model_P1_output = tf.keras.layers.LSTM(hp.Choice('P1_L1_RNNUnits', [60, 120, 240]), return_sequences=True)(model_P1_output)
 
-        model_P1_output = tf.keras.layers.GRU(hp.Choice('P1_L1_LSTMUnits', [60, 120, 240]), return_sequences=True)(model_P1_output)
-
+        # Droput RNN 1
         if hp.Boolean("P1_L1_dropoutBool"):
             model_P1_output = tf.keras.layers.Dropout(rate = hp.Choice('P1_L1_dropoutUnits', [0.1, 0.25, 0.5], parent_name="P1_L1_dropoutBool", parent_values = True))(model_P1_output)
 
-        model_P1_output = tf.keras.layers.GRU(hp.Choice('P1_L2_LSTMUnits', [60, 120, 240]), return_sequences=False)(model_P1_output)
+        # RNN 2
+        if self.modelType == "GRU":
+            model_P1_output = tf.keras.layers.GRU(hp.Choice('P1_L2_RNNUnits', [60, 120, 240]), return_sequences=False)(model_P1_output)
+        else:
+            model_P1_output = tf.keras.layers.LSTM(hp.Choice('P1_L2_RNNUnits', [60, 120, 240]), return_sequences=False)(model_P1_output)
 
         model_P1_output = tf.keras.layers.Dense(1)(model_P1_output)
 
@@ -268,13 +276,22 @@ class AR_RNN_model:
 
         model_P16_output = model_P16_input
 
+        # RNN 1
+        if self.modelType == "GRU":
+            model_P16_output = tf.keras.layers.LSTM(hp.Choice('P16_L1_RNNUnits', [60, 120, 240]), return_sequences=True)(model_P16_output)
+        else:
+            model_P16_output = tf.keras.layers.GRU(hp.Choice('P16_L1_RNNUnits', [60, 120, 240]),return_sequences=True)(model_P16_output)
 
-        model_P16_output = tf.keras.layers.GRU(hp.Choice('P16_L1_LSTMUnits', [60, 120, 240]), return_sequences=True)(model_P16_output)
-
+        # Drouput RNN 1
         if hp.Boolean("P16_L1_dropoutBool"):
             model_P16_output = tf.keras.layers.Dropout(rate = hp.Choice('P16_L1_dropoutUnits', [0.1, 0.25, 0.5], parent_name="P16_L1_dropoutBool", parent_values = True))(model_P16_output)
 
-        model_P16_output = tf.keras.layers.GRU(hp.Choice('P16_L2_LSTMUnits', [60, 120, 240]), return_sequences=False)(model_P16_output)
+        # RNN 2
+        if self.modelType == "GRU":
+            model_P16_output = tf.keras.layers.GRU(hp.Choice('P16_L2_RNNUnits', [60, 120, 240]), return_sequences=False)(model_P16_output)
+        else:
+            model_P16_output = tf.keras.layers.LSTM(hp.Choice('P16_L2_RNNUnits', [60, 120, 240]),
+                                                   return_sequences=False)(model_P16_output)
 
         model_P16_output = tf.keras.layers.Dense(1)(model_P16_output)
 
@@ -322,9 +339,13 @@ class AR_RNN_model:
         model_out = model_P1P16
 
         if hp.Boolean("ARRNN_TargetFNN_RNNLayer"):
-            model_out = tf.keras.layers.RepeatVector(15)(model_out)
-            model_out = tf.keras.layers.GRU(5, return_sequences=True)(model_out)
-            model_out = tf.keras.layers.GRU(1, return_sequences=False)(model_out)
+            model_out = tf.keras.layers.RepeatVector(60)(model_out)
+            if self.modelType == "GRU":
+                model_out = tf.keras.layers.GRU(5, return_sequences=True)(model_out)
+                model_out = tf.keras.layers.GRU(1, return_sequences=False)(model_out)
+            else:
+                model_out = tf.keras.layers.LSTM(5, return_sequences=True)(model_out)
+                model_out = tf.keras.layers.LSTM(1, return_sequences=False)(model_out)
 
         model_out = tf.keras.layers.Dense(hp.Choice('ARRNN_TargetFNN_FL1Units', [60, 120, 240]), activation=hp.Choice('ARRNN_TargetFNN_FL1Activation', ["relu", "tanh", "linear"]))(model_out)
         model_out = tf.keras.layers.Dense(hp.Choice('ARRNN_TargetFNN_FL2Units', [60, 120, 240]), activation=hp.Choice('ARRNN_TargetFNN_FL2Activation', ["relu","tanh", "linear"]))(model_out)
@@ -341,17 +362,23 @@ class AR_RNN_model:
 
         model_P1_output = model_P1_input
 
-        model_P1_output = tf.keras.layers.LSTM(config['P1_L1_LSTMUnits'], return_sequences=True)(
-            model_P1_output)
+        # RNN 1
+        if self.modelType == "GRU":
+            model_P1_output = tf.keras.layers.GRU(config['P1_L1_RNNUnits'], return_sequences=True)(model_P1_output)
+        else:
+            model_P1_output = tf.keras.layers.LSTM(config['P1_L1_RNNUnits'], return_sequences=True)(model_P1_output)
 
+        # Dropout RNN 1
         if config["P1_L1_dropoutBool"]:
             model_P1_output = tf.keras.layers.Dropout(rate=config['P1_L1_dropoutUnits'])(
                 model_P1_output)
 
-            # TODO: Research was mehrere RNN Layer machen
-            # TODO: Konsolidationseffekt? Ist dann Encoder überhaupt vernünftig?
-        model_P1_output = tf.keras.layers.LSTM(config['P1_L2_LSTMUnits'],
-                                                   return_sequences=False)(model_P1_output)
+        # RNN 2
+        if self.modelType == "GRU":
+            model_P1_output = tf.keras.layers.GRU(config['P1_L2_RNNUnits'],return_sequences=False)(model_P1_output)
+        else:
+            model_P1_output = tf.keras.layers.LSTM(config['P1_L2_RNNUnits'], return_sequences=False)(model_P1_output)
+
 
         model_P1_output = tf.keras.layers.Dense(1)(model_P1_output)
 
@@ -369,15 +396,22 @@ class AR_RNN_model:
 
         model_P16_output = model_P16_input
 
-        model_P16_output = tf.keras.layers.LSTM(config['P16_L1_LSTMUnits'], return_sequences=True)(
-            model_P16_output)
+        # RNN 1
+        if self.modelType == "GRU":
+            model_P16_output = tf.keras.layers.GRU(config['P16_L1_RNNUnits'], return_sequences=True)(model_P16_output)
+        else:
+            model_P16_output = tf.keras.layers.LSTM(config['P16_L1_RNNUnits'], return_sequences=True)(model_P16_output)
 
+        # Dropout RNN 1
         if config["P16_L1_dropoutBool"]:
             model_P16_output = tf.keras.layers.Dropout(rate=config['P16_L1_dropoutUnits'])(
                 model_P16_output)
 
-        model_P16_output = tf.keras.layers.LSTM(config['P16_L2_LSTMUnits'],
-                                                    return_sequences=False)(model_P16_output)
+        # RNN 2
+        if self.modelType == "GRU":
+            model_P16_output = tf.keras.layers.GRU(config['P16_L2_RNNUnits'],return_sequences=False)(model_P16_output)
+        else:
+            model_P16_output = tf.keras.layers.LSTM(config['P16_L2_RNNUnits'], return_sequences=False)(model_P16_output)
 
         model_P16_output = tf.keras.layers.Dense(1)(model_P16_output)
 
@@ -400,8 +434,6 @@ class AR_RNN_model:
         model_P1 = self.buildP1Model(config)
         model_P16 = self.buildP16Model(config)
 
-
-
         self.Encoder._name = "Encoder_P1"
         model_P1_c = tf.keras.Sequential([self.Encoder, model_P1])
 
@@ -422,19 +454,23 @@ class AR_RNN_model:
                       batch_size=1024)
 
         for layer in model_P1_c.layers:
-            layer.trainable = True
+            layer.trainable = False
 
         for layer in model_P16_c.layers:
-            layer.trainable = True
+            layer.trainable = False
 
         model_P1P16 = tf.keras.layers.concatenate([model_P1_c.output, model_P16_c.output])
 
         model_out = model_P1P16
 
         if config["ARRNN_TargetFNN_RNNLayer"]:
-            model_out = tf.keras.layers.RepeatVector(15)(model_out)
-            model_out = tf.keras.layers.GRU(5, return_sequences=True)(model_out)
-            model_out = tf.keras.layers.GRU(1, return_sequences=False)(model_out)
+            model_out = tf.keras.layers.RepeatVector(60)(model_out)
+            if self.modelType == "GRU":
+                model_out = tf.keras.layers.GRU(5, return_sequences=True)(model_out)
+                model_out = tf.keras.layers.GRU(1, return_sequences=False)(model_out)
+            else:
+                model_out = tf.keras.layers.LSTM(5, return_sequences=True)(model_out)
+                model_out = tf.keras.layers.LSTM(1, return_sequences=False)(model_out)
 
         model_out = tf.keras.layers.Dense(config['ARRNN_TargetFNN_FL1Units'],
                                           activation=config['ARRNN_TargetFNN_FL1Activation'])(model_out)
@@ -445,8 +481,8 @@ class AR_RNN_model:
         model = tf.keras.Model(inputs=[model_P1_c.input, model_P16_c.input], outputs=model_out)
         corr_loss = lambda y_true, y_pred: 1 - np.abs(np.corrcoef(y_true.flatten(), y_pred.flatten())[1, 0])
 
-        #model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate))
-        model.compile(loss=corr_loss, optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate))
+        model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate))
+        #model.compile(loss=corr_loss, optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate))
 
         model.summary()
         tf.keras.utils.plot_model(model)
@@ -454,7 +490,8 @@ class AR_RNN_model:
         return model
 
     # function which handels all the steps necessary for model building and estimation. Should be accesed from the "outside"
-    def setARRNN_model(self, method = "Config", config = None, epochs = 40):
+    def setARRNN_model(self, method = "Config", config = None, epochs = 20, modelType = "GRU"):
+        self.modelType = modelType
         self.setupAutoencoder(None)
 
         if self.dimRedMethod == "Average":
@@ -471,7 +508,7 @@ class AR_RNN_model:
             self.Encoder.set_weights([weights, bias])
 
         elif self.dimRedMethod == "Autoencoder":
-            self.Autoencoder.fit(self.trainDF['P1'], self.trainDF['P1'], epochs=20, validation_data=(self.testDF['P1'], self.testDF['P1']),
+            self.Autoencoder.fit(self.trainDF['P1'], self.trainDF['P1'], epochs=10, validation_data=(self.testDF['P1'], self.testDF['P1']),
                             batch_size=1024)
 
         elif self.dimRedMethod == "None":
@@ -492,7 +529,7 @@ class AR_RNN_model:
             import keras_tuner as kt
 
             #tuner = kt.RandomSearch(self.buildARRNN_KerasTuner, objective='val_loss', max_trials=10)
-            tuner = kt.BayesianOptimization(self.buildARRNN_KerasTuner, objective='val_loss', max_trials=10, overwrite=True, project_name="ARRNN_tune")
+            tuner = kt.BayesianOptimization(self.buildARRNN_KerasTuner, objective='val_loss', max_trials=5, overwrite=True, project_name="ARRNN_tune")
 
             tuner.search(x = [self.trainDF['P1'], self.trainDF['P16']], y = self.trainDF['Target'], epochs = 10, validation_data=([self.testDF['P1'], self.testDF['P16']], self.testDF['Target']),
                          batch_size = 1024)
@@ -512,17 +549,15 @@ class AR_RNN_model:
             if config is None:
                 config = {
                         # Model P1
-                        'P1_L1_LSTMUnits': 240,
+                        'P1_L1_RNNUnits': 240,
                         "P1_L1_dropoutBool": True,
                         'P1_L1_dropoutUnits': 0.25,
-                        "P1_L2_LSTMBool": True,
-                        'P1_L2_LSTMUnits': 120,
+                        'P1_L2_RNNUnits': 120,
                         # Model P16
-                        'P16_L1_LSTMUnits': 240,
+                        'P16_L1_RNNUnits': 240,
                         "P16_L1_dropoutBool": True,
                         'P16_L1_dropoutUnits': 0.25,
-                        "P16_L2_LSTMBool": True,
-                        'P16_L2_LSTMUnits': 120,
+                        'P16_L2_RNNUnits': 120,
                         # Model TargetFNN
                         "ARRNN_TargetFNN_RNNLayer": True,
                         'ARRNN_TargetFNN_FL1Units': 120,
@@ -561,3 +596,30 @@ class AR_RNN_model:
             Y_eval_hat = self.scaler_Y.inverse_transform(Y_eval_hat)
 
         return Y_train_hat, Y_test_hat, Y_eval_hat
+
+    # function which returns the predicted values for the training, test and eval time series
+    def getFittedTrainData(self, scaled=True):
+        Y_train_hat = self.ARRNN_model.predict([self.trainDF['P1'], self.trainDF['P16']])
+
+        if not scaled:
+            Y_train_hat = self.scaler_Y.inverse_transform(Y_train_hat)
+
+        return Y_train_hat
+
+    # function which returns the predicted values for the training, test and eval time series
+    def getFittedTestData(self, scaled=True):
+        Y_test_hat = self.ARRNN_model.predict([self.testDF['P1'], self.testDF['P16']])
+
+        if not scaled:
+            Y_test_hat = self.scaler_Y.inverse_transform(Y_test_hat)
+
+        return Y_test_hat
+
+    # function which returns the predicted values for the training, test and eval time series
+    def getFittedEvalData(self, scaled=True):
+        Y_eval_hat = self.ARRNN_model.predict([self.evalDF['P1'], self.evalDF['P16']])
+
+        if not scaled:
+            Y_eval_hat = self.scaler_Y.inverse_transform(Y_eval_hat)
+
+        return Y_eval_hat

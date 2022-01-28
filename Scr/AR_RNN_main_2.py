@@ -3,15 +3,15 @@ from Scr.AR_RNN_model_2 import AR_RNN_model
 from Scr.functions import import_data
 from Scr.functions import performanceEval
 
-data = import_data("Data/")
+data = import_data("Data/")[0]
 
 result_dic = {}
 
 #%%
-ARRNN_mod = AR_RNN_model(data, arOrder = 60 * 1, forecastSteps = 15, coinID = 4, dimRedMethod = 'Average', outputDim=60, trainStart = "25/05/2021", evalStart = "01/06/2021")
+ARRNN_mod = AR_RNN_model(data, arOrder = 60 * 1, forecastSteps = 15, coinID = 4, dimRedMethod = 'Autoencoder', outputDim=15, trainStart = "25/05/2021", evalStart = "01/06/2021")
 
 #%%
-ARRNN_mod.setARRNN_model(method = "Tuner")
+ARRNN_mod.setARRNN_model(method = "Config", modelType = "GRU")
 ARRNN_mod.tuner.get_best_hyperparameters()[0].values
 
 #%%

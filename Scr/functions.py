@@ -1,9 +1,9 @@
-def import_data(dir):
-    import os
-    import numpy as np
-    import pandas as pd
+import os
+import numpy as np
+import pandas as pd
 
-    file_path = os.path.join(dir, 'train.csv')
+def import_data(dir):
+
     dtypes = {
         'timestamp': np.int64,
         'Asset_ID': np.int8,
@@ -16,18 +16,20 @@ def import_data(dir):
         'VWAP': np.float64,
         'Target': np.float64,
     }
-    data = pd.read_csv(file_path, dtype=dtypes, usecols=list(dtypes.keys()))
-    data['Time'] = pd.to_datetime(data['timestamp'], unit='s')
+
+    file_path = os.path.join(dir, 'train.csv')
+    all_data = pd.read_csv(file_path, dtype=dtypes, usecols=list(dtypes.keys()))
+    all_data['Time'] = pd.to_datetime(all_data['timestamp'], unit='s')
 
     file_path = os.path.join(dir, 'asset_details.csv')
-    details = pd.read_csv(file_path)
+    all_data_details = pd.read_csv(file_path)
 
-    data = pd.merge(data,
-                    details,
-                    on="Asset_ID",
-                    how='left')
+    all_data = pd.merge(all_data,
+                         all_data_details,
+                         on="Asset_ID",
+                         how='left')
 
-    return data
+    return all_data, all_data_details
 
 def performanceEval(Y, Y_hat, preFix = ""):
     import numpy as np
