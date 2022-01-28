@@ -8,6 +8,7 @@ from Scr.functions import Var
 from Scr.functions import MSE
 
 import numpy as np
+import pandas as pd
 
 data = import_data("Data/")[0]
 
@@ -535,6 +536,27 @@ result_dic_noneEther["GRUTestCorr"] = np.mean(result_array_TestCorr)
 result_dic_noneEther["GRUTestBias"] = np.mean(result_array_TestBias)
 result_dic_noneEther["GRUTestVar"] = np.mean(result_array_TestVar)
 result_dic_noneEther["GRUTestMSE"] = np.mean(result_array_TestMSE)
+
+#%%
+
+coins = ("Dogge", "Ether")
+datasets = ("Train", "Test")
+modeltypes = ("LSTM", "GRU")
+metrics = ("Corr", "Bias", "Var", "MSE")
+dimredmethods = ("autoencoder", "average", "none")
+
+for coin in coins:
+    for metric in metrics:
+        globals()[f"df_{metric}{coin}"] = []
+        for modeltype in modeltypes:
+            for dataset in datasets:
+                globals()[f"df_{metric}{coin}"].append([modeltype, dataset, globals()[f"result_dic_{dimredmethods[0]}{coin}"][f"{modeltype}{dataset}{metric}"],
+                                                        globals()[f"result_dic_{dimredmethods[1]}{coin}"][f"{modeltype}{dataset}{metric}"],
+                                                        globals()[f"result_dic_{dimredmethods[2]}{coin}"][f"{modeltype}{dataset}{metric}"]])
+
+        globals()[f"df_{metric}{coin}"] = pd.DataFrame(globals()[f"df_{metric}{coin}"])
+        globals()[f"df_{metric}{coin}"].columns = ["Model", "Dataset", "Autoencoder", "Average", "None"]
+        globals()[f"df_{metric}{coin}"].to_csv(f"Data/df_{metric}{coin}.csv")
 
 
 
