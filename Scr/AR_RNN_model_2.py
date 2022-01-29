@@ -334,6 +334,8 @@ class AR_RNN_model:
         for layer in model_P16_c.layers:
             layer.trainable = False
 
+        self.price_models = (model_P1_c, model_P16_c)
+
         model_P1P16 = tf.keras.layers.concatenate([model_P1_c.output, model_P16_c.output])
 
         model_out = model_P1P16
@@ -458,6 +460,8 @@ class AR_RNN_model:
 
         for layer in model_P16_c.layers:
             layer.trainable = False
+
+        self.price_models = (model_P1_c, model_P16_c)
 
         model_P1P16 = tf.keras.layers.concatenate([model_P1_c.output, model_P16_c.output])
 
