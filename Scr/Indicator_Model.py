@@ -13,8 +13,8 @@ from statsmodels.tsa.stattools import adfuller
 from datetime import datetime
 import time
 
-class Advanced_Model():
-    # Initialize class variables
+class Indicator_Model():
+    #Initialize class variables
     coin_id = 0
     coin_name = ''
 
